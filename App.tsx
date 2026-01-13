@@ -524,7 +524,7 @@ const App: React.FC = () => {
         </GlassCard>
 
         <div className="text-center pt-8">
-           <p className="text-xs text-white/20">Liquid Coach v1.0 • Powered by Gemini AI</p>
+           <p className="text-xs text-white/20">Vibe code by Clay . Powered by Gemini AI</p>
         </div>
       </div>
     );
