@@ -7,7 +7,7 @@ import { parseTcxFileContent, formatDuration, formatPace } from "./tcxParser";
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
- * Helper to convert file to base64
+ * Helper to convert file to generative part
  */
 export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } }> => {
   return new Promise((resolve, reject) => {
@@ -56,6 +56,43 @@ const getKarvonenContext = (profile: AthleteProfile): string => {
   `;
 };
 
+/**
+ * The Master System Prompt for the AI Coach Layer
+ */
+const COACHING_SYSTEM_PROMPT = `
+You are the AI coaching layer of a local-first running coach application called “Run Boy Run”.
+
+Your role is NOT to calculate metrics.
+Your role is to INTERPRET, CONNECT, and EXPLAIN decisions made by deterministic code.
+
+You must think like an experienced endurance running coach.
+
+==================================================
+CORE PHILOSOPHY
+==================================================
+1. Training is a continuous system, not isolated workouts.
+2. Morning readiness affects today’s execution, not long-term structure.
+3. The training plan defines intent; daily context defines adjustment.
+4. Consistency and recovery matter more than hero workouts.
+5. All recommendations must be conservative, explainable, and practical.
+
+==================================================
+HARD RULES (NON-NEGOTIABLE)
+==================================================
+- You MUST NOT change distances, volume, or workout structure.
+- You MUST NOT invent or recalculate metrics.
+- You MUST NOT override recovery or safety decisions made by code.
+- You MUST NOT use medical or diagnostic language.
+- You MUST treat all biometric interpretation as ESTIMATED and CONTEXTUAL.
+
+==================================================
+IDENTITY & VOICE
+==================================================
+- Calm, experienced endurance coach.
+- Practical, not hype-driven.
+- Supportive, not authoritarian.
+`;
+
 export const analyzeVitals = async (files: File[], profile: AthleteProfile, todaysPlannedWorkout?: string) => {
   // Convert all files to generative parts
   const imageParts = await Promise.all(files.map(f => fileToGenerativePart(f)));
@@ -64,29 +101,35 @@ export const analyzeVitals = async (files: File[], profile: AthleteProfile, toda
   let planContext = "";
   if (todaysPlannedWorkout) {
     planContext = `
-      IMPORTANT CONTEXT:
-      The user has a scheduled training plan. 
-      TODAY'S SCHEDULED WORKOUT IS: "${todaysPlannedWorkout}".
-      
-      Your task is to either CONFIRM this workout if their readiness is high, 
-      or MODIFY/REDUCE it if their readiness is low.
+      CONTEXT - SCHEDULED WORKOUT: "${todaysPlannedWorkout}"
     `;
+  } else {
+    planContext = "CONTEXT - SCHEDULED WORKOUT: None / Rest / Unscheduled";
   }
 
   const prompt = `
-    You are an expert running coach and physiologist. 
+    ${COACHING_SYSTEM_PROMPT}
+
+    TASK: MORNING DECISION (BEFORE RUN)
+    
     Analyze these images of morning vitals (HRV, RHR, Sleep, etc.).
     
+    ATHLETE CONTEXT:
     ${context}
     ${planContext}
+
+    Apply the "MORNING DECISION" responsibility:
+    - Does today’s readiness SUPPORT the planned intent?
+    - Should the runner PROTECT the session (reduce intensity, keep distance) or EXECUTE as planned?
+    
+    Note: You may recommend holding the run strictly in Zone 2 or focusing on form, but DO NOT cancel the workout unless it is already a rest day.
 
     Based on the visible data across all images and the athlete's specific goals and history:
     1. Determine a readiness score (0-100).
     2. Determine the training status (Recovery, Maintenance, Ready to Train, Peak).
-    3. Provide a concise summary of their physiological state.
-    4. Recommend the INTENSITY and TYPE of run they should do today. 
-       *Crucial:* If they are fatigued, suggest REST or Active Recovery regardless of the plan. 
-       If they are ready, endorse the planned workout or suggest one that aligns with their '${profile.runningGoal}'.
+    3. Construct the JSON output carefully:
+       - "summary": Combine "Today's Context" (Readiness + Plan) and "Why It Matters" (Big picture implication).
+       - "recommendation": Combine "What to Do Today" (Execution cues) and "Coach's Note" (Supportive closing).
   `;
 
   const response = await ai.models.generateContent({
@@ -118,16 +161,26 @@ export const analyzeWorkoutImage = async (files: File[], profile: AthleteProfile
   const context = getKarvonenContext(profile);
 
   const prompt = `
-    You are an elite running coach. Analyze these workout screenshots (Strava/Apple Watch/Garmin/TrainingPeaks).
-    Use information from ALL images provided (e.g., map view, splits view, heart rate graph).
+    ${COACHING_SYSTEM_PROMPT}
+
+    TASK: POST-RUN INTEGRATION (Image Analysis)
+    Analyze these workout screenshots (Strava/Apple Watch/Garmin/TrainingPeaks).
     
+    ATHLETE CONTEXT:
     ${context}
-    ${readinessContext || ""}
+    ${readinessContext || "Readiness Context: Unknown"}
 
     1. Extract key metrics if visible (Total Distance, Total Time, Avg Pace, Avg HR). Prioritize the most accurate summary data found.
-    2. Provide "Coach's Feedback": Compare their effort (HR Zones) to the outcome. Did they adhere to a purpose?
-       ${readinessContext ? "CRITICAL: You must cross-reference their specific morning readiness/recovery state provided above. Did they listen to their body? If they had poor sleep/recovery but ran hard, warn them. If they were fresh and ran hard, praise them." : ""}
-    3. Suggest a specific "Next Workout" that helps them towards their goal of '${profile.runningGoal}'.
+    
+    Apply the "POST-RUN INTEGRATION" responsibility:
+    - Connect what just happened to the big picture.
+    - If metrics are visible, use them to explain (do not invent).
+    - If performance exceeded expectations: Praise restraint.
+    - If performance underwhelmed: Normalize it, emphasize adaptation.
+
+    Construct the JSON output:
+    - "aiCoachFeedback": Combine "Today's Context" (How it fit the plan) and "Why It Matters" (Impact on fitness/recovery).
+    - "nextWorkoutSuggestion": Combine "What to Do Next" (Recovery/Focus) and "Coach's Note" (Supportive closing).
   `;
 
   const response = await ai.models.generateContent({
@@ -181,20 +234,27 @@ export const analyzeTcxFile = async (file: File, profile: AthleteProfile, readin
   };
 
   const prompt = `
-    You are an elite running coach. I have mathematically parsed a TCX file for you. 
-    Here is the exact data from the run:
+    ${COACHING_SYSTEM_PROMPT}
+
+    TASK: POST-RUN INTEGRATION (TCX Analysis)
+    I have mathematically parsed a TCX file. INTERPRET this data.
     
+    RUN DATA:
     ${JSON.stringify(runSummary, null, 2)}
     
+    ATHLETE CONTEXT:
     ${context}
-    ${readinessContext || ""}
+    ${readinessContext || "Readiness Context: Unknown"}
 
-    Task:
-    1. Provide "Coach's Feedback": Analyze the splits and heart rate drift. 
-       Was this a steady effort? Did they blow up? 
-       Does this align with a goal of '${profile.runningGoal}'?
-       ${readinessContext ? "CRITICAL: You must cross-reference their specific morning readiness/recovery state provided above. Did they listen to their body? If they had poor sleep/recovery but ran hard, warn them about injury risk or adaptability." : ""}
-    2. Suggest "Next Workout": Based on the fatigue indicated by this session and their long term goal.
+    Apply the "POST-RUN INTEGRATION" responsibility:
+    - Connect the splits and HR drift to the big picture.
+    - Did they support fitness, recovery, or consistency?
+    - If performance exceeded expectations: Praise restraint.
+    - If performance underwhelmed: Normalize it, emphasize adaptation.
+
+    Construct the JSON output:
+    - "aiCoachFeedback": Combine "Today's Context" (How it fit the plan) and "Why It Matters" (Impact on fitness/recovery).
+    - "nextWorkoutSuggestion": Combine "What to Do Next" (Recovery/Focus) and "Coach's Note" (Supportive closing).
   `;
 
   const response = await ai.models.generateContent({
@@ -235,7 +295,12 @@ export const generateTrainingPlan = async (
   const context = getKarvonenContext(profile);
   
   const prompt = `
-    Create a 4-week structured running training plan for this athlete:
+    ${COACHING_SYSTEM_PROMPT}
+
+    TASK: PLAN GENERATION
+    Create a 4-week structured running training plan for this athlete.
+
+    ATHLETE CONTEXT:
     ${context}
 
     USER PREFERENCES:
@@ -243,19 +308,15 @@ export const generateTrainingPlan = async (
     - Preferred Workout/Interval Day: ${preferences.workoutDay}
     - Specific Notes/Requests: "${preferences.notes}"
 
-    The plan should be specific, progressive, and geared towards their goal: "${profile.runningGoal}".
-    Respect the preferred days where possible.
+    RULES:
+    - The plan should be specific, progressive, and geared towards their goal: "${profile.runningGoal}".
+    - Respect the preferred days where possible.
+    - Ensure consistency and recovery matter more than hero workouts.
     
     Output a JSON object with:
     - goal: String summary of the plan's focus
     - durationWeeks: 4
-    - schedule: An array of workouts. Each workout must have:
-      - week: number (1-4)
-      - day: number (1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun)
-      - title: Short name (e.g. "Long Run", "Intervals", "Rest")
-      - description: Specific details (e.g. "5x1k @ 4:00/km with 2min rest")
-      - type: One of "Run", "Rest", "Cross", "Long Run", "Intervals"
-      - distanceKm: Estimated distance (number, optional, 0 if rest/cross)
+    - schedule: An array of workouts.
   `;
 
   const response = await ai.models.generateContent({
