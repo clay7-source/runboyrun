@@ -56,8 +56,9 @@ const getKarvonenContext = (profile: AthleteProfile): string => {
   `;
 };
 
-export const analyzeVitals = async (file: File, profile: AthleteProfile, todaysPlannedWorkout?: string) => {
-  const imagePart = await fileToGenerativePart(file);
+export const analyzeVitals = async (files: File[], profile: AthleteProfile, todaysPlannedWorkout?: string) => {
+  // Convert all files to generative parts
+  const imageParts = await Promise.all(files.map(f => fileToGenerativePart(f)));
   const context = getKarvonenContext(profile);
   
   let planContext = "";
@@ -74,12 +75,12 @@ export const analyzeVitals = async (file: File, profile: AthleteProfile, todaysP
 
   const prompt = `
     You are an expert running coach and physiologist. 
-    Analyze this image of morning vitals (HRV, RHR, Sleep, etc.).
+    Analyze these images of morning vitals (HRV, RHR, Sleep, etc.).
     
     ${context}
     ${planContext}
 
-    Based on the visible data and the athlete's specific goals and history:
+    Based on the visible data across all images and the athlete's specific goals and history:
     1. Determine a readiness score (0-100).
     2. Determine the training status (Recovery, Maintenance, Ready to Train, Peak).
     3. Provide a concise summary of their physiological state.
@@ -91,7 +92,7 @@ export const analyzeVitals = async (file: File, profile: AthleteProfile, todaysP
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: {
-      parts: [imagePart, { text: prompt }]
+      parts: [...imageParts, { text: prompt }]
     },
     config: {
       responseMimeType: "application/json",
@@ -111,17 +112,19 @@ export const analyzeVitals = async (file: File, profile: AthleteProfile, todaysP
   return JSON.parse(response.text || '{}');
 };
 
-export const analyzeWorkoutImage = async (file: File, profile: AthleteProfile, readinessContext?: string) => {
-  const imagePart = await fileToGenerativePart(file);
+export const analyzeWorkoutImage = async (files: File[], profile: AthleteProfile, readinessContext?: string) => {
+  // Convert all files to generative parts
+  const imageParts = await Promise.all(files.map(f => fileToGenerativePart(f)));
   const context = getKarvonenContext(profile);
 
   const prompt = `
-    You are an elite running coach. Analyze this workout screenshot (Strava/Apple Watch/Garmin).
+    You are an elite running coach. Analyze these workout screenshots (Strava/Apple Watch/Garmin/TrainingPeaks).
+    Use information from ALL images provided (e.g., map view, splits view, heart rate graph).
     
     ${context}
     ${readinessContext || ""}
 
-    1. Extract key metrics if visible (Distance, Time, Pace, Avg HR).
+    1. Extract key metrics if visible (Total Distance, Total Time, Avg Pace, Avg HR). Prioritize the most accurate summary data found.
     2. Provide "Coach's Feedback": Compare their effort (HR Zones) to the outcome. Did they adhere to a purpose?
        ${readinessContext ? "CRITICAL: You must cross-reference their specific morning readiness/recovery state provided above. Did they listen to their body? If they had poor sleep/recovery but ran hard, warn them. If they were fresh and ran hard, praise them." : ""}
     3. Suggest a specific "Next Workout" that helps them towards their goal of '${profile.runningGoal}'.
@@ -130,7 +133,7 @@ export const analyzeWorkoutImage = async (file: File, profile: AthleteProfile, r
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: {
-      parts: [imagePart, { text: prompt }]
+      parts: [...imageParts, { text: prompt }]
     },
     config: {
       responseMimeType: "application/json",
