@@ -3,8 +3,8 @@ import { AthleteProfile, AnalysisType, TrainingPlan } from "../types";
 import { parseTcxFileContent, formatDuration, formatPace } from "./tcxParser";
 
 // Initialize Gemini Client
-const apiKey = process.env.API_KEY || 'AIzaSyCj6OqT85xQJG7R_-Jkr_sUxUufbrucIR8'; 
-const ai = new GoogleGenAI({ apiKey });
+// The API key must be obtained exclusively from the environment variable.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
  * Helper to convert file to base64
