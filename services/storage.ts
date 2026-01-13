@@ -5,7 +5,8 @@ const KEYS = {
   READINESS: 'liquidrun_readiness',
   HISTORY: 'liquidrun_history',
   SETTINGS: 'liquidrun_settings',
-  PLAN: 'liquidrun_plan'
+  PLAN: 'liquidrun_plan',
+  PLAN_PREFS: 'liquidrun_plan_prefs'
 };
 
 export const saveProfile = (data: AthleteProfile) => {
@@ -94,5 +95,22 @@ export const loadPlan = (): TrainingPlan | null => {
     return data ? JSON.parse(data) : null;
   } catch (e) {
     return null;
+  }
+};
+
+export const savePlanPrefs = (data: { longRunDay: string; workoutDay: string; notes: string }) => {
+  try {
+    localStorage.setItem(KEYS.PLAN_PREFS, JSON.stringify(data));
+  } catch (e) {
+    console.error("Failed to save plan prefs", e);
+  }
+};
+
+export const loadPlanPrefs = () => {
+  try {
+    const data = localStorage.getItem(KEYS.PLAN_PREFS);
+    return data ? JSON.parse(data) : { longRunDay: 'Sunday', workoutDay: 'Tuesday', notes: '' };
+  } catch (e) {
+    return { longRunDay: 'Sunday', workoutDay: 'Tuesday', notes: '' };
   }
 };
