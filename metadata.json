@@ -1,0 +1,5 @@
+{
+  "name": "Run Boy Run",
+  "description": "A premium, glass-morphic AI running coach that analyzes your workouts and vitals (screenshots or TCX) to provide personalized, physiology-based training recommendations.",
+  "requestFramePermissions": []
+}
