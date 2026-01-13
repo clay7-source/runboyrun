@@ -181,8 +181,11 @@ const App: React.FC = () => {
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: AnalysisType) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    
+    // Convert FileList to Array
+    const files = Array.from(fileList);
 
     setIsLoading(true);
     setLoadingMessage(type === AnalysisType.VITALS ? 'Analyzing Biometrics...' : 'Analyzing Workout...');
@@ -193,7 +196,8 @@ const App: React.FC = () => {
         const todaysWorkout = getTodaysScheduledWorkout();
         const workoutContext = todaysWorkout ? `${todaysWorkout.title}: ${todaysWorkout.description}` : undefined;
 
-        const result = await analyzeVitals(file, profile, workoutContext);
+        // Pass array of files
+        const result = await analyzeVitals(files, profile, workoutContext);
         const newReadiness = { ...result, lastUpdated: Date.now() };
         setReadiness(newReadiness);
         saveReadiness(newReadiness);
@@ -221,9 +225,11 @@ const App: React.FC = () => {
 
         let result: any;
         if (type === AnalysisType.WORKOUT_IMAGE) {
-          result = await analyzeWorkoutImage(file, profile, readinessContext);
+          // Pass array of files
+          result = await analyzeWorkoutImage(files, profile, readinessContext);
         } else {
-          result = await analyzeTcxFile(file, profile, readinessContext);
+          // TCX typically processes a single file at a time
+          result = await analyzeTcxFile(files[0], profile, readinessContext);
         }
         const newWorkout: WorkoutAnalysis = {
           id: Date.now().toString(),
@@ -319,7 +325,7 @@ const App: React.FC = () => {
                   </button>
               </div>
             )}
-            <input type="file" ref={vitalsInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, AnalysisType.VITALS)} />
+            <input type="file" ref={vitalsInputRef} className="hidden" accept="image/*" multiple onChange={(e) => handleFileUpload(e, AnalysisType.VITALS)} />
          </GlassCard>
 
          {/* 2. Workout Log Buttons */}
@@ -331,7 +337,7 @@ const App: React.FC = () => {
               <ImageIcon className={`w-5 h-5 ${getThemeColorClass('text')}`} />
               <span className="text-xs font-medium text-white/70">Analyze Screenshot</span>
             </button>
-            <input type="file" ref={workoutImageInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, AnalysisType.WORKOUT_IMAGE)} />
+            <input type="file" ref={workoutImageInputRef} className="hidden" accept="image/*" multiple onChange={(e) => handleFileUpload(e, AnalysisType.WORKOUT_IMAGE)} />
 
             <button 
               onClick={() => tcxInputRef.current?.click()}
