@@ -11,6 +11,14 @@ export interface AthleteProfile {
   isConfigured: boolean;
 }
 
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  isAuthenticated: boolean;
+}
+
 export interface AppSettings {
   themeColor: 'cyan' | 'purple' | 'orange' | 'green';
 }
@@ -93,6 +101,17 @@ export interface HrZone {
   min: number;
   max: number;
   description: string;
+}
+
+export interface BackupData {
+  version: number;
+  timestamp: number;
+  profile: AthleteProfile | null;
+  settings: AppSettings;
+  readiness: ReadinessData | null;
+  history: WorkoutAnalysis[];
+  plan: TrainingPlan | null;
+  planPrefs: { longRunDay: string; workoutDay: string; notes: string };
 }
 
 export enum AnalysisType {
