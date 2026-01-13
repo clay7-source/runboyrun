@@ -1,4 +1,4 @@
-import { AthleteProfile, ReadinessData, WorkoutAnalysis, AppSettings, TrainingPlan } from "../types";
+import { AthleteProfile, ReadinessData, WorkoutAnalysis, AppSettings, TrainingPlan, UserProfile, BackupData } from "../types";
 
 const KEYS = {
   PROFILE: 'liquidrun_profile',
@@ -6,8 +6,33 @@ const KEYS = {
   HISTORY: 'liquidrun_history',
   SETTINGS: 'liquidrun_settings',
   PLAN: 'liquidrun_plan',
-  PLAN_PREFS: 'liquidrun_plan_prefs'
+  PLAN_PREFS: 'liquidrun_plan_prefs',
+  USER: 'liquidrun_user'
 };
+
+// --- User Auth ---
+export const saveUser = (user: UserProfile | null) => {
+  try {
+    if (user) {
+      localStorage.setItem(KEYS.USER, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(KEYS.USER);
+    }
+  } catch (e) {
+    console.error("Failed to save user", e);
+  }
+};
+
+export const loadUser = (): UserProfile | null => {
+  try {
+    const data = localStorage.getItem(KEYS.USER);
+    return data ? JSON.parse(data) : null;
+  } catch (e) {
+    return null;
+  }
+};
+
+// --- Domain Data ---
 
 export const saveProfile = (data: AthleteProfile) => {
   try {
@@ -112,5 +137,41 @@ export const loadPlanPrefs = () => {
     return data ? JSON.parse(data) : { longRunDay: 'Sunday', workoutDay: 'Tuesday', notes: '' };
   } catch (e) {
     return { longRunDay: 'Sunday', workoutDay: 'Tuesday', notes: '' };
+  }
+};
+
+// --- Backup & Restore ---
+
+export const createBackup = (): string => {
+  const backup: BackupData = {
+    version: 1,
+    timestamp: Date.now(),
+    profile: loadProfile(),
+    settings: loadSettings(),
+    readiness: loadReadiness(),
+    history: loadHistory(),
+    plan: loadPlan(),
+    planPrefs: loadPlanPrefs()
+  };
+  return JSON.stringify(backup, null, 2);
+};
+
+export const restoreBackup = (jsonString: string): boolean => {
+  try {
+    const backup: BackupData = JSON.parse(jsonString);
+    if (!backup || !backup.version) return false;
+
+    // Restore all keys
+    if (backup.profile) saveProfile(backup.profile);
+    if (backup.settings) saveSettings(backup.settings);
+    if (backup.readiness) saveReadiness(backup.readiness);
+    if (backup.history) saveHistory(backup.history);
+    savePlan(backup.plan);
+    if (backup.planPrefs) savePlanPrefs(backup.planPrefs);
+    
+    return true;
+  } catch (e) {
+    console.error("Failed to restore backup", e);
+    return false;
   }
 };
