@@ -93,6 +93,7 @@ export interface ExtendedAnalysis {
   summary: string;
   effortScore: number; // 1-10 RPE
   qualityScore: number; // 0-100 Execution score
+  vo2MaxEstimate?: number; // Added: Estimated VO2 Max for this run
   trainingEffect: string; // "Base Building", "Tempo", "Recovery", "VO2 Max"
   recoveryTimeHours: number;
   hydrationEstimateMl: number;
