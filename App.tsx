@@ -267,6 +267,21 @@ const App: React.FC = () => {
     }).join('\n');
   };
 
+  // NEW: Generate previous readiness context
+  const getPreviousReadinessContext = (): string => {
+    if (!readiness) return "No previous readiness data available.";
+    
+    const date = new Date(readiness.lastUpdated).toLocaleDateString();
+    const time = new Date(readiness.lastUpdated).toLocaleTimeString();
+    
+    return `
+      - Date/Time: ${date} at ${time}
+      - Previous Score: ${readiness.score}/100
+      - Previous Status: ${readiness.status}
+      - Previous Summary: ${readiness.summary}
+    `;
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: AnalysisType) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
@@ -279,15 +294,18 @@ const App: React.FC = () => {
     setUploadError(null);
 
     try {
+      // Common History Context (Workouts)
+      const historyContext = getRecentHistoryContext();
+
       if (type === AnalysisType.VITALS) {
         const todaysWorkout = getTodaysScheduledWorkout();
         const workoutContext = todaysWorkout ? `${todaysWorkout.title}: ${todaysWorkout.description}` : undefined;
         
-        // Pass history context so AI knows what happened yesterday
-        const historyContext = getRecentHistoryContext();
+        // Pass previous readiness data BEFORE it gets updated
+        const previousReadinessContext = getPreviousReadinessContext();
 
         // Pass array of files
-        const result = await analyzeVitals(files, profile, workoutContext, historyContext);
+        const result = await analyzeVitals(files, profile, workoutContext, historyContext, previousReadinessContext);
         const newReadiness = { ...result, lastUpdated: Date.now() };
         setReadiness(newReadiness);
         saveReadiness(newReadiness);
@@ -315,11 +333,12 @@ const App: React.FC = () => {
 
         let result: any;
         if (type === AnalysisType.WORKOUT_IMAGE) {
-          // Pass array of files
-          result = await analyzeWorkoutImage(files, profile, readinessContext);
+          // Pass array of files and history context
+          result = await analyzeWorkoutImage(files, profile, readinessContext, historyContext);
         } else {
           // TCX typically processes a single file at a time
-          result = await analyzeTcxFile(files[0], profile, readinessContext);
+          // Pass history context
+          result = await analyzeTcxFile(files[0], profile, readinessContext, historyContext);
         }
         const newWorkout: WorkoutAnalysis = {
           id: Date.now().toString(),
