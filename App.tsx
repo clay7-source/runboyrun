@@ -5,7 +5,7 @@ import { formatDuration, formatPace } from './services/tcxParser';
 import { saveProfile, loadProfile, saveReadiness, loadReadiness, saveHistory, loadHistory, saveSettings, loadSettings, savePlan, loadPlan, savePlanPrefs, loadPlanPrefs, saveUser, loadUser, createBackup, restoreBackup } from './services/storage';
 import { GlassCard } from './components/GlassCard';
 import { AthleteProfile as ProfileComponent } from './components/AthleteProfile';
-import { Activity, Battery, Upload, Zap, ChevronRight, FileCode, ImageIcon, Loader2, TrendingUp, Mountain, History, Calendar, MapPin, Play, Settings, List, X, BarChart, Medal, Flame, Trash2, PlusCircle, CheckCircle, Clock, Cloud, Download, LogOut } from 'lucide-react';
+import { Activity, Battery, Upload, Zap, ChevronRight, FileCode, ImageIcon, Loader2, TrendingUp, Mountain, History, Calendar, MapPin, Play, Settings, List, X, BarChart, Medal, Flame, Trash2, PlusCircle, CheckCircle, Clock, Cloud, Download, LogOut, ShieldAlert, AlertTriangle } from 'lucide-react';
 
 const INITIAL_PROFILE: AthleteProfile = {
   name: '',
@@ -244,6 +244,16 @@ const App: React.FC = () => {
       return date.getDate() === now.getDate() && date.getMonth() === now.getMonth();
     });
     return workout || null;
+  };
+
+  // Check if readiness data is from today
+  const isReadinessFresh = (): boolean => {
+    if (!readiness) return false;
+    const rDate = new Date(readiness.lastUpdated);
+    const now = new Date();
+    return rDate.getDate() === now.getDate() && 
+           rDate.getMonth() === now.getMonth() && 
+           rDate.getFullYear() === now.getFullYear();
   };
 
   // NEW: Generate recent history context for the AI
@@ -558,6 +568,17 @@ const App: React.FC = () => {
 
     const currentWeek = Math.ceil((Date.now() - plan.startDate) / (7 * 24 * 60 * 60 * 1000)) || 1;
     
+    // Check readiness status for today
+    const readinessFresh = isReadinessFresh();
+    const readinessScore = readiness?.score || 100; // Default to 100 if no data
+    
+    // Determine Adaptation Level based on readiness
+    let adaptationLevel: 'none' | 'modify' | 'skip' = 'none';
+    if (readinessFresh) {
+       if (readinessScore < 45) adaptationLevel = 'skip';
+       else if (readinessScore < 65) adaptationLevel = 'modify';
+    }
+    
     return (
        <div className="space-y-6 animate-fade-in pb-10">
           <GlassCard className="relative overflow-hidden">
@@ -585,26 +606,65 @@ const App: React.FC = () => {
                      const isToday = new Date().toDateString() === date.toDateString();
                      const isCompleted = isWorkoutCompleted(date);
 
+                     // Dynamic Styles based on Adaptation
+                     let borderColor = isToday ? `border-${settings.themeColor}-500` : 'border-white/5';
+                     let opacity = 'opacity-100';
+                     let overlayContent = null;
+                     
+                     if (isToday && adaptationLevel === 'skip') {
+                        borderColor = 'border-red-500';
+                        opacity = 'opacity-40 grayscale';
+                        overlayContent = (
+                           <div className="absolute inset-0 z-10 flex items-center justify-center backdrop-blur-[1px] bg-black/40 rounded-2xl">
+                              <div className="bg-red-500/90 text-white px-4 py-2 rounded-xl flex items-center gap-2 shadow-xl animate-pulse">
+                                 <ShieldAlert className="w-5 h-5" />
+                                 <span className="font-bold text-sm">REST ADVISED: {readiness?.status}</span>
+                              </div>
+                           </div>
+                        );
+                     } else if (isToday && adaptationLevel === 'modify') {
+                        borderColor = 'border-yellow-500';
+                        overlayContent = (
+                           <div className="absolute top-0 right-0 p-2 z-10">
+                              <div className="bg-yellow-500/20 border border-yellow-500/50 text-yellow-200 text-[10px] px-2 py-1 rounded-lg flex items-center gap-1 shadow-lg backdrop-blur-md">
+                                 <AlertTriangle className="w-3 h-3" />
+                                 <span>ADJUST: Reduce Intensity</span>
+                              </div>
+                           </div>
+                        );
+                     }
+
                      return (
-                       <div key={idx} className={`relative p-4 rounded-2xl border ${isToday ? `border-${settings.themeColor}-500 bg-white/10` : 'border-white/5 bg-white/5'} flex items-start gap-4`}>
-                          <div className="flex flex-col items-center pt-1 min-w-[3rem]">
-                             <span className="text-[10px] uppercase text-white/40">{date.toLocaleDateString('en-US', { weekday: 'short' })}</span>
-                             <span className="text-lg font-bold text-white">{date.getDate()}</span>
+                       <div key={idx} className={`relative rounded-2xl border ${borderColor} ${isToday ? 'bg-white/10 shadow-lg' : 'bg-white/5'} transition-all`}>
+                          {overlayContent}
+                          <div className={`p-4 flex items-start gap-4 ${opacity}`}>
+                              <div className="flex flex-col items-center pt-1 min-w-[3rem]">
+                                 <span className="text-[10px] uppercase text-white/40">{date.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                                 <span className="text-lg font-bold text-white">{date.getDate()}</span>
+                              </div>
+                              
+                              <div className="flex-1">
+                                 <div className="flex justify-between items-center mb-1">
+                                    <h4 className={`font-bold ${isToday ? 'text-white' : 'text-white/80'}`}>{workout.title}</h4>
+                                    {workout.type !== 'Rest' && (
+                                      <span className={`text-[10px] px-2 py-1 rounded-full ${isCompleted ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/40'}`}>
+                                         {isCompleted ? 'COMPLETED' : workout.type}
+                                      </span>
+                                    )}
+                                 </div>
+                                 <p className="text-sm text-white/60 leading-snug">{workout.description}</p>
+                              </div>
                           </div>
                           
-                          <div className="flex-1">
-                             <div className="flex justify-between items-center mb-1">
-                                <h4 className={`font-bold ${isToday ? 'text-white' : 'text-white/80'}`}>{workout.title}</h4>
-                                {workout.type !== 'Rest' && (
-                                  <span className={`text-[10px] px-2 py-1 rounded-full ${isCompleted ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/40'}`}>
-                                     {isCompleted ? 'COMPLETED' : workout.type}
-                                  </span>
-                                )}
-                             </div>
-                             <p className="text-sm text-white/60 leading-snug">{workout.description}</p>
-                          </div>
-                          
-                          {isCompleted && <CheckCircle className="w-5 h-5 text-green-500 absolute top-4 right-4" />}
+                          {/* AI Recommendation Footer for Today if Modified */}
+                          {isToday && adaptationLevel !== 'none' && readiness?.recommendation && (
+                              <div className={`mx-4 mb-4 mt-1 p-3 rounded-lg text-xs leading-relaxed border-t border-white/5 ${adaptationLevel === 'skip' ? 'bg-red-500/10 text-red-200' : 'bg-yellow-500/10 text-yellow-100'}`}>
+                                 <span className="font-bold uppercase opacity-70 block mb-1">AI Coach Adjustment:</span>
+                                 {readiness.recommendation}
+                              </div>
+                          )}
+
+                          {isCompleted && <CheckCircle className="w-5 h-5 text-green-500 absolute top-4 right-4 z-20 bg-[#0f172a] rounded-full" />}
                        </div>
                      )
                   })}
