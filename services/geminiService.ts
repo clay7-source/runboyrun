@@ -93,7 +93,12 @@ IDENTITY & VOICE
 - Supportive, not authoritarian.
 `;
 
-export const analyzeVitals = async (files: File[], profile: AthleteProfile, todaysPlannedWorkout?: string) => {
+export const analyzeVitals = async (
+  files: File[], 
+  profile: AthleteProfile, 
+  todaysPlannedWorkout?: string, 
+  recentHistoryContext?: string
+) => {
   // Convert all files to generative parts
   const imageParts = await Promise.all(files.map(f => fileToGenerativePart(f)));
   const context = getKarvonenContext(profile);
@@ -107,6 +112,13 @@ export const analyzeVitals = async (files: File[], profile: AthleteProfile, toda
     planContext = "CONTEXT - SCHEDULED WORKOUT: None / Rest / Unscheduled";
   }
 
+  const historyContextString = recentHistoryContext ? `
+    CONTEXT - RECENT TRAINING HISTORY (Last 5 Days):
+    ${recentHistoryContext}
+    
+    *Use this history to distinguish between acute training fatigue (expected) and sickness/burnout (unexpected).*
+  ` : "CONTEXT - RECENT TRAINING HISTORY: None available.";
+
   const prompt = `
     ${COACHING_SYSTEM_PROMPT}
 
@@ -117,6 +129,7 @@ export const analyzeVitals = async (files: File[], profile: AthleteProfile, toda
     ATHLETE CONTEXT:
     ${context}
     ${planContext}
+    ${historyContextString}
 
     Apply the "MORNING DECISION" responsibility:
     - Does today’s readiness SUPPORT the planned intent?
