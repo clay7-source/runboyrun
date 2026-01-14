@@ -69,6 +69,46 @@ const getKarvonenContext = (profile: AthleteProfile): string => {
 };
 
 /**
+ * Calculates Estimated VO2 Max for a specific run based on ACSM formulas and Swain et al. HR reserve method.
+ */
+const calculateEstimatedVO2Max = (
+  avgPaceSecondsPerKm: number,
+  avgHr: number,
+  maxHr: number,
+  elevationGain: number,
+  totalDistance: number
+): number | null => {
+  if (!avgPaceSecondsPerKm || !avgHr || !maxHr || avgHr < 40) return null;
+
+  // 1. Calculate Speed in meters/min
+  const speedMetersPerMin = 1000 / (avgPaceSecondsPerKm / 60);
+
+  // 2. Calculate Grade (fraction)
+  const grade = totalDistance > 0 ? Math.max(0, elevationGain / totalDistance) : 0;
+
+  // 3. Calculate Oxygen Cost (VO2) of the running velocity (ACSM Formula)
+  // VO2 (ml/kg/min) = 0.2 * speed + 0.9 * speed * grade + 3.5
+  const vo2Cost = (0.2 * speedMetersPerMin) + (0.9 * speedMetersPerMin * grade) + 3.5;
+
+  // 4. Calculate %HR Max
+  const percentHrMax = avgHr / maxHr;
+
+  // Filter out data that is too low intensity (unreliable for VO2 max prediction)
+  if (percentHrMax < 0.60) return null;
+
+  // 5. Convert %HR Max to %VO2 Max (Swain et al.)
+  // %HRmax = 0.64 * %VO2max + 0.37  =>  %VO2max = (%HRmax - 0.37) / 0.64
+  const percentVo2Max = (percentHrMax - 0.37) / 0.64;
+
+  if (percentVo2Max <= 0 || percentVo2Max > 1.2) return null; // Sanity check
+
+  // 6. Extrapolate to VO2 Max
+  const estimatedVo2Max = vo2Cost / percentVo2Max;
+
+  return Math.round(estimatedVo2Max);
+};
+
+/**
  * The Master System Prompt for the AI Coach Layer
  */
 const COACHING_SYSTEM_PROMPT = `
@@ -82,6 +122,7 @@ ANALYSIS PHILOSOPHY
 2. **Quality over Quantity**: A short run with perfect execution is better than a long junk mile run. Score accordingly.
 3. **Form Inference**: Use Cadence and Pace to infer stride efficiency. (e.g., Low cadence + Fast pace = High impact forces).
 4. **Recovery Science**: Estimate recovery time based on intensity (HR zones) and duration.
+5. **VO2 Max Estimation**: Use the relationship between pace (work output) and Heart Rate (physiological cost) to estimate current VO2 Max capacity.
 
 ==================================================
 IDENTITY & VOICE
@@ -98,6 +139,7 @@ const extendedAnalysisSchema = {
     summary: { type: Type.STRING, description: "Executive summary of the session performance" },
     effortScore: { type: Type.INTEGER, description: "RPE 1-10" },
     qualityScore: { type: Type.INTEGER, description: "0-100 Score based on execution vs implied goal" },
+    vo2MaxEstimate: { type: Type.INTEGER, description: "Estimated VO2 Max for this specific session based on Pace/HR ratio" },
     trainingEffect: { type: Type.STRING, description: "e.g., Base, Tempo, VO2 Max, Recovery" },
     recoveryTimeHours: { type: Type.INTEGER, description: "Estimated hours until fully recovered" },
     hydrationEstimateMl: { type: Type.INTEGER, description: "Estimated fluid loss in ml" },
@@ -246,7 +288,8 @@ export const analyzeWorkoutImage = async (files: File[], profile: AthleteProfile
 
     1. **Data Extraction**: Extract EVERY visible number. Distance, Time, Pace, HR, Cadence (SPM), Elevation, Calories, Zones.
     2. **Inference**: If Cadence isn't visible, infer it from the description or typical values for this pace/profile (mark as estimated).
-    3. **Deep Analysis**: Fill out the Extended Analysis schema. Calculate efficiency based on available metrics.
+    3. **Deep Analysis**: Fill out the Extended Analysis schema. 
+    4. **VO2 Max**: Estimate the VO2 Max for this run using the extracted Avg Pace and Avg HR vs Max HR. Use standard running formulas.
 
     Output the full extended analysis object.
   `;
@@ -290,7 +333,19 @@ export const analyzeTcxFile = async (file: File, profile: AthleteProfile, readin
   const context = getKarvonenContext(profile);
   const historyContextString = recentHistoryContext || "None available.";
   
-  // 2. PREPARE DEEP SUMMARY FOR AI
+  // 2. CALCULATE VO2 MAX ESTIMATE (Deterministic)
+  let calculatedVo2Max = null;
+  if (profile.isConfigured && profile.maxHr) {
+    calculatedVo2Max = calculateEstimatedVO2Max(
+      parsedData.avgPaceSecondsPerKm,
+      parsedData.avgHr,
+      profile.maxHr,
+      parsedData.elevationGain,
+      parsedData.totalDistanceMeters
+    );
+  }
+
+  // 3. PREPARE DEEP SUMMARY FOR AI
   const runSummary = {
     metrics: {
         distance: (parsedData.totalDistanceMeters / 1000).toFixed(2) + " km",
@@ -300,7 +355,8 @@ export const analyzeTcxFile = async (file: File, profile: AthleteProfile, readin
         maxHr: parsedData.maxHr,
         elevationGain: parsedData.elevationGain,
         avgCadence: parsedData.avgCadence,
-        calories: parsedData.totalCalories
+        calories: parsedData.totalCalories,
+        calculatedVo2MaxEstimate: calculatedVo2Max
     },
     splits: parsedData.splits.map(s => 
         `Km ${s.kilometer}: ${formatDuration(s.timeSeconds)} | HR: ${s.avgHr} | Cadence: ${s.avgCadence || 'N/A'}`
@@ -311,7 +367,7 @@ export const analyzeTcxFile = async (file: File, profile: AthleteProfile, readin
     ${COACHING_SYSTEM_PROMPT}
 
     TASK: DEEP DIVE WORKOUT ANALYSIS (From Parsed TCX Data)
-    I have parsed the raw GPS/XML file. Analyze this biological data deeply.
+    I have parsed the raw GPS/XML data. Analyze this biological data deeply.
     
     ${temporalContext}
 
@@ -326,7 +382,7 @@ export const analyzeTcxFile = async (file: File, profile: AthleteProfile, readin
     - **Form**: Look at Cadence vs Pace in the splits. Is it low (<165)? Is it consistent?
     - **Pacing**: Look at the split times. Positive or negative split?
     - **Cardiac Drift**: Look at HR in later splits compared to pace.
-    - **Load**: Calculate the implied physiological cost.
+    - **VO2 Max**: I have calculated an estimate (${calculatedVo2Max || "N/A"}) based on the data. Validate this in your 'vo2MaxEstimate' field, or refine it if you see cardiac drift/elevation issues.
 
     Generate the Extended Analysis JSON.
   `;
@@ -363,7 +419,6 @@ export const generateTrainingPlan = async (
   profile: AthleteProfile, 
   preferences: { longRunDay: string; workoutDay: string; notes: string }
 ): Promise<TrainingPlan> => {
-    // Keep existing plan generation logic...
   const context = getKarvonenContext(profile);
   const temporalContext = getCurrentTemporalContext();
   
