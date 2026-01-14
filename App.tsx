@@ -5,7 +5,7 @@ import { formatDuration, formatPace } from './services/tcxParser';
 import { saveProfile, loadProfile, saveReadiness, loadReadiness, saveHistory, loadHistory, saveSettings, loadSettings, savePlan, loadPlan, savePlanPrefs, loadPlanPrefs, saveUser, loadUser, createBackup, restoreBackup } from './services/storage';
 import { GlassCard } from './components/GlassCard';
 import { AthleteProfile as ProfileComponent } from './components/AthleteProfile';
-import { Activity, Battery, Upload, Zap, ChevronRight, FileCode, ImageIcon, Loader2, TrendingUp, Mountain, History, Calendar, MapPin, Play, Settings, List, X, BarChart, Medal, Flame, Trash2, PlusCircle, CheckCircle, Clock, Cloud, Download, LogOut, ShieldAlert, AlertTriangle } from 'lucide-react';
+import { Activity, Battery, Upload, Zap, ChevronRight, FileCode, ImageIcon, Loader2, TrendingUp, Mountain, History, Calendar, MapPin, Play, Settings, List, X, BarChart, Medal, Flame, Trash2, PlusCircle, CheckCircle, Clock, Cloud, Download, LogOut, ShieldAlert, AlertTriangle, Droplets, Gauge, BrainCircuit, Footprints, ArrowUpRight, ArrowDownRight, Wind, User } from 'lucide-react';
 
 const INITIAL_PROFILE: AthleteProfile = {
   name: '',
@@ -350,11 +350,12 @@ const App: React.FC = () => {
           // Pass history context
           result = await analyzeTcxFile(files[0], profile, readinessContext, historyContext);
         }
+        
         const newWorkout: WorkoutAnalysis = {
           id: Date.now().toString(),
           type: 'Run',
           timestamp: Date.now(),
-          ...result
+          ...result // Spreads the full object including extendedAnalysis
         };
         const updatedHistory = [newWorkout, ...history];
         setHistory(updatedHistory);
@@ -512,256 +513,179 @@ const App: React.FC = () => {
       </div>
     );
   };
-
+  
   const renderPlanView = () => {
-    if (!plan) {
-      return (
-         <div className="space-y-6 animate-fade-in">
-            <GlassCard title="AI Training Plan" icon={<Calendar className="w-5 h-5 text-purple-400" />}>
-              <div className="text-center py-8">
-                 <h3 className="text-xl font-bold text-white mb-2">No Active Plan</h3>
-                 <p className="text-sm text-white/50 mb-6">Let the AI build a 4-week structured plan tailored to your physiology and goals.</p>
-                 
-                 <div className="text-left space-y-4 mb-6 px-4">
-                    <div>
-                      <label className="text-xs text-white/40 uppercase block mb-1">Preferred Long Run Day</label>
-                      <select 
-                        value={planPrefs.longRunDay}
-                        onChange={(e) => setPlanPrefs({...planPrefs, longRunDay: e.target.value})}
-                        className="w-full bg-black/20 text-white text-sm rounded-lg px-3 py-2 border border-white/10"
-                      >
-                        {['Saturday', 'Sunday', 'Monday', 'Friday'].map(d => <option key={d} value={d}>{d}</option>)}
-                      </select>
-                    </div>
-                     <div>
-                      <label className="text-xs text-white/40 uppercase block mb-1">Preferred Interval Day</label>
-                      <select 
-                         value={planPrefs.workoutDay}
-                         onChange={(e) => setPlanPrefs({...planPrefs, workoutDay: e.target.value})}
-                         className="w-full bg-black/20 text-white text-sm rounded-lg px-3 py-2 border border-white/10"
-                      >
-                        {['Tuesday', 'Wednesday', 'Thursday'].map(d => <option key={d} value={d}>{d}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                       <label className="text-xs text-white/40 uppercase block mb-1">Specific Requests</label>
-                       <textarea 
-                          value={planPrefs.notes}
-                          onChange={(e) => setPlanPrefs({...planPrefs, notes: e.target.value})}
-                          placeholder="e.g. I have a 10k race in 5 weeks..."
-                          className="w-full bg-black/20 text-white text-sm rounded-lg px-3 py-2 border border-white/10 h-20 resize-none"
-                       />
-                    </div>
-                 </div>
-
-                 <button 
-                  onClick={handlePlanGeneration}
-                  className={`px-8 py-3 rounded-full font-bold shadow-lg shadow-purple-500/20 bg-gradient-to-r from-purple-500 to-indigo-600 text-white`}
-                 >
-                   Generate 4-Week Plan
-                 </button>
-              </div>
-            </GlassCard>
-         </div>
-      );
-    }
-
-    const currentWeek = Math.ceil((Date.now() - plan.startDate) / (7 * 24 * 60 * 60 * 1000)) || 1;
-    
-    // Check readiness status for today
-    const readinessFresh = isReadinessFresh();
-    const readinessScore = readiness?.score || 100; // Default to 100 if no data
-    
-    // Determine Adaptation Level based on readiness
-    let adaptationLevel: 'none' | 'modify' | 'skip' = 'none';
-    if (readinessFresh) {
-       if (readinessScore < 45) adaptationLevel = 'skip';
-       else if (readinessScore < 65) adaptationLevel = 'modify';
-    }
-    
     return (
-       <div className="space-y-6 animate-fade-in pb-10">
-          <GlassCard className="relative overflow-hidden">
-             <div className="flex justify-between items-start">
+      <div className="space-y-6 animate-fade-in">
+        <GlassCard title="Training Plan" icon={<Calendar className={`w-5 h-5 ${getThemeColorClass('text')}`} />}>
+          {!plan ? (
+            <div className="space-y-4">
+              <p className="text-sm text-white/60">
+                Configure your weekly preferences and let the AI build a personalized 4-week block for you.
+              </p>
+              
+              <div className="space-y-3">
+                 <div>
+                    <label className="text-xs uppercase text-white/40 font-bold mb-1 block">Long Run Day</label>
+                    <select 
+                      value={planPrefs.longRunDay} 
+                      onChange={(e) => setPlanPrefs({...planPrefs, longRunDay: e.target.value})}
+                      className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                    >
+                      {['Saturday', 'Sunday', 'Monday'].map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                 </div>
+                 <div>
+                    <label className="text-xs uppercase text-white/40 font-bold mb-1 block">Workout Day</label>
+                    <select 
+                      value={planPrefs.workoutDay} 
+                      onChange={(e) => setPlanPrefs({...planPrefs, workoutDay: e.target.value})}
+                      className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                    >
+                      {['Tuesday', 'Wednesday', 'Thursday'].map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                 </div>
+                 <div>
+                    <label className="text-xs uppercase text-white/40 font-bold mb-1 block">Focus / Notes</label>
+                    <textarea 
+                      value={planPrefs.notes}
+                      onChange={(e) => setPlanPrefs({...planPrefs, notes: e.target.value})}
+                      placeholder="e.g. Preparing for a hilly 10k"
+                      className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 h-20 resize-none"
+                    />
+                 </div>
+              </div>
+
+              <button 
+                onClick={handlePlanGeneration}
+                className={`w-full py-3 rounded-xl font-bold text-white shadow-lg shadow-${settings.themeColor}-500/20 bg-gradient-to-r from-${settings.themeColor}-500 to-${settings.themeColor}-600 hover:brightness-110 transition-all flex items-center justify-center gap-2`}
+              >
+                <Zap className="w-4 h-4 fill-current" />
+                Generate AI Plan
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
                <div>
-                 <h2 className="text-2xl font-bold text-white mb-1">{plan.goal}</h2>
-                 <p className="text-sm text-white/50">Week {Math.max(1, Math.min(4, currentWeek))} of {plan.durationWeeks}</p>
+                  <div className="flex justify-between items-start mb-2">
+                     <div>
+                        <h3 className="text-lg font-bold text-white">{plan.goal}</h3>
+                        <p className="text-xs text-white/50">{plan.durationWeeks} Week Block</p>
+                     </div>
+                     <button onClick={handleDeletePlan} className="p-2 hover:bg-white/10 rounded-full text-white/30 hover:text-red-400 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                     </button>
+                  </div>
+                  
+                  {/* Progress Bar */}
+                  <div className="h-1 bg-white/10 rounded-full w-full overflow-hidden">
+                     <div className={`h-full bg-${settings.themeColor}-500 w-[10%]`}></div>
+                  </div>
                </div>
-               <button onClick={handleDeletePlan} className="p-2 text-white/30 hover:text-red-400">
-                  <Trash2 className="w-4 h-4" />
-               </button>
-             </div>
-          </GlassCard>
 
-          {Array.from({ length: plan.durationWeeks }).map((_, weekIdx) => {
-             const weekNum = weekIdx + 1;
-             const weekWorkouts = plan.schedule.filter(s => s.week === weekNum).sort((a,b) => a.day - b.day);
-             const isCurrentWeek = weekNum === Math.max(1, Math.min(4, currentWeek));
-             
-             return (
-               <div key={weekNum} className={`space-y-3 ${isCurrentWeek ? '' : 'opacity-70'}`}>
-                  <h3 className={`text-sm font-bold uppercase tracking-widest pl-2 ${isCurrentWeek ? 'text-white' : 'text-white/30'}`}>Week {weekNum}</h3>
-                  {weekWorkouts.map((workout, idx) => {
-                     const date = getPlanDate(plan.startDate, workout.week, workout.day);
-                     const isToday = new Date().toDateString() === date.toDateString();
-                     const isCompleted = isWorkoutCompleted(date);
-
-                     // Dynamic Styles based on Adaptation
-                     let borderColor = isToday ? `border-${settings.themeColor}-500` : 'border-white/5';
-                     let opacity = 'opacity-100';
-                     let overlayContent = null;
-                     
-                     if (isToday && adaptationLevel === 'skip') {
-                        borderColor = 'border-red-500';
-                        opacity = 'opacity-40 grayscale';
-                        overlayContent = (
-                           <div className="absolute inset-0 z-10 flex items-center justify-center backdrop-blur-[1px] bg-black/40 rounded-2xl">
-                              <div className="bg-red-500/90 text-white px-4 py-2 rounded-xl flex items-center gap-2 shadow-xl animate-pulse">
-                                 <ShieldAlert className="w-5 h-5" />
-                                 <span className="font-bold text-sm">REST ADVISED: {readiness?.status}</span>
-                              </div>
-                           </div>
-                        );
-                     } else if (isToday && adaptationLevel === 'modify') {
-                        borderColor = 'border-yellow-500';
-                        overlayContent = (
-                           <div className="absolute top-0 right-0 p-2 z-10">
-                              <div className="bg-yellow-500/20 border border-yellow-500/50 text-yellow-200 text-[10px] px-2 py-1 rounded-lg flex items-center gap-1 shadow-lg backdrop-blur-md">
-                                 <AlertTriangle className="w-3 h-3" />
-                                 <span>ADJUST: Reduce Intensity</span>
-                              </div>
-                           </div>
-                        );
-                     }
-
+               <div className="space-y-4">
+                  {plan.schedule.map((workout, idx) => {
                      return (
-                       <div key={idx} className={`relative rounded-2xl border ${borderColor} ${isToday ? 'bg-white/10 shadow-lg' : 'bg-white/5'} transition-all`}>
-                          {overlayContent}
-                          <div className={`p-4 flex items-start gap-4 ${opacity}`}>
-                              <div className="flex flex-col items-center pt-1 min-w-[3rem]">
-                                 <span className="text-[10px] uppercase text-white/40">{date.toLocaleDateString('en-US', { weekday: 'short' })}</span>
-                                 <span className="text-lg font-bold text-white">{date.getDate()}</span>
-                              </div>
-                              
-                              <div className="flex-1">
-                                 <div className="flex justify-between items-center mb-1">
-                                    <h4 className={`font-bold ${isToday ? 'text-white' : 'text-white/80'}`}>{workout.title}</h4>
-                                    {workout.type !== 'Rest' && (
-                                      <span className={`text-[10px] px-2 py-1 rounded-full ${isCompleted ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/40'}`}>
-                                         {isCompleted ? 'COMPLETED' : workout.type}
-                                      </span>
-                                    )}
+                        <div key={idx} className="flex gap-4 group">
+                           <div className="flex flex-col items-center">
+                              <div className={`w-2 h-2 rounded-full mt-2 bg-white/20 group-hover:bg-white/40`}></div>
+                              <div className="w-[1px] bg-white/10 flex-1 my-1"></div>
+                           </div>
+                           <div className="pb-6 flex-1">
+                              <div className="text-[10px] font-bold uppercase text-white/30 mb-1">Week {workout.week} • Day {workout.day}</div>
+                              <div className="bg-white/5 border border-white/5 rounded-xl p-4 hover:bg-white/10 transition-colors">
+                                 <div className="flex justify-between items-start mb-2">
+                                    <h4 className="font-bold text-white text-sm">{workout.title}</h4>
+                                    <span className={`text-[10px] px-2 py-1 rounded-full bg-${settings.themeColor}-500/10 text-${settings.themeColor}-400 border border-${settings.themeColor}-500/20`}>{workout.type}</span>
                                  </div>
-                                 <p className="text-sm text-white/60 leading-snug">{workout.description}</p>
+                                 <p className="text-xs text-white/60 leading-relaxed">{workout.description}</p>
+                                 {workout.distanceKm && (
+                                    <div className="mt-2 text-xs font-mono text-white/40">{workout.distanceKm}km Target</div>
+                                 )}
                               </div>
-                          </div>
-                          
-                          {/* AI Recommendation Footer for Today if Modified */}
-                          {isToday && adaptationLevel !== 'none' && readiness?.recommendation && (
-                              <div className={`mx-4 mb-4 mt-1 p-3 rounded-lg text-xs leading-relaxed border-t border-white/5 ${adaptationLevel === 'skip' ? 'bg-red-500/10 text-red-200' : 'bg-yellow-500/10 text-yellow-100'}`}>
-                                 <span className="font-bold uppercase opacity-70 block mb-1">AI Coach Adjustment:</span>
-                                 {readiness.recommendation}
-                              </div>
-                          )}
-
-                          {isCompleted && <CheckCircle className="w-5 h-5 text-green-500 absolute top-4 right-4 z-20 bg-[#0f172a] rounded-full" />}
-                       </div>
+                           </div>
+                        </div>
                      )
                   })}
                </div>
-             )
-          })}
-       </div>
+            </div>
+          )}
+        </GlassCard>
+      </div>
     );
   };
 
   const renderSettingsView = () => {
     return (
       <div className="space-y-6 animate-fade-in">
-        {/* Account & Data Section */}
-        <GlassCard title="Account & Data" icon={<Cloud className="w-5 h-5 text-blue-400" />}>
-           {user ? (
-             <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/10">
-                   <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-lg">
-                      {user.name.charAt(0)}
-                   </div>
-                   <div className="flex-1">
-                      <div className="text-sm font-bold text-white">{user.name}</div>
-                      <div className="text-xs text-white/50">{user.email}</div>
-                   </div>
-                   <button onClick={handleLogout} className="p-2 text-white/30 hover:text-white transition-colors">
-                      <LogOut className="w-4 h-4" />
-                   </button>
-                </div>
-                
-                <div className="flex items-center justify-between text-xs text-white/60 px-1">
-                   <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                      Cloud Sync Active
-                   </div>
-                   <span>Last synced: Just now</span>
-                </div>
-             </div>
-           ) : (
-             <div className="space-y-4">
-               <p className="text-sm text-white/60">Sign in to sync your training data across devices.</p>
+         {/* User Account */}
+         <GlassCard title="Account" icon={<User className="w-5 h-5 text-blue-400" />}>
+             {user ? (
+               <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                     {user.avatarUrl ? (
+                       <img src={user.avatarUrl} alt="User" className="w-10 h-10 rounded-full ring-2 ring-white/10" />
+                     ) : (
+                       <div className={`w-10 h-10 rounded-full bg-${settings.themeColor}-500 flex items-center justify-center font-bold`}>{user.name[0]}</div>
+                     )}
+                     <div>
+                       <div className="text-sm font-bold text-white">{user.name}</div>
+                       <div className="text-xs text-white/50">{user.email}</div>
+                     </div>
+                  </div>
+                  <button onClick={handleLogout} className="p-2 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors">
+                    <LogOut className="w-4 h-4" />
+                  </button>
+               </div>
+             ) : (
                <button 
                  onClick={handleGoogleLogin}
-                 className="w-full bg-white text-gray-900 font-medium py-2.5 px-4 rounded-lg flex items-center justify-center gap-3 hover:bg-gray-100 transition-colors"
+                 className="w-full py-3 bg-white text-black font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"
                >
-                 <svg className="w-4 h-4" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
                  Sign in with Google
                </button>
-               <p className="text-[10px] text-white/30 text-center italic">Note: Demo login simulation</p>
-             </div>
-           )}
+             )}
+         </GlassCard>
 
-           <div className="mt-4 pt-4 border-t border-white/10">
-              <h4 className="text-xs font-bold uppercase text-white/40 mb-3">Manual Backup</h4>
-              <div className="grid grid-cols-2 gap-3">
-                 <button 
-                   onClick={handleExportBackup}
-                   className="flex flex-col items-center gap-2 p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 transition-colors"
-                 >
-                    <Download className="w-5 h-5 text-white/70" />
-                    <span className="text-xs font-medium text-white/80">Export Data</span>
-                 </button>
-                 <button 
-                   onClick={() => backupInputRef.current?.click()}
-                   className="flex flex-col items-center gap-2 p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 transition-colors"
-                 >
-                    <Upload className="w-5 h-5 text-white/70" />
-                    <span className="text-xs font-medium text-white/80">Import Backup</span>
-                 </button>
-                 <input 
-                   type="file" 
-                   ref={backupInputRef}
-                   accept=".json" 
-                   className="hidden" 
-                   onChange={handleImportBackup} 
-                 />
-              </div>
-           </div>
-        </GlassCard>
+         {/* Athlete Profile Form */}
+         <ProfileComponent profile={profile} onSave={handleProfileSave} />
 
-        <ProfileComponent profile={profile} onSave={handleProfileSave} />
+         {/* Appearance */}
+         <GlassCard title="Appearance" icon={<Droplets className="w-5 h-5 text-purple-400" />}>
+            <div className="flex justify-between gap-2">
+               {['cyan', 'purple', 'orange', 'green'].map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => handleThemeChange(color as any)}
+                    className={`h-10 flex-1 rounded-lg border-2 transition-all ${settings.themeColor === color ? 'border-white scale-105' : 'border-transparent opacity-50 hover:opacity-100'}`}
+                  >
+                    <div className={`w-full h-full rounded-md ${color === 'cyan' ? 'bg-cyan-500' : color === 'purple' ? 'bg-purple-500' : color === 'orange' ? 'bg-orange-500' : 'bg-green-500'}`} />
+                  </button>
+               ))}
+            </div>
+         </GlassCard>
 
-        <GlassCard title="App Aesthetics" icon={<Zap className="w-5 h-5 text-yellow-400" />}>
-           <div className="grid grid-cols-4 gap-4">
-              {(['cyan', 'purple', 'orange', 'green'] as const).map(color => (
-                <button 
-                  key={color}
-                  onClick={() => handleThemeChange(color)}
-                  className={`h-12 rounded-xl bg-${color}-500 border-2 ${settings.themeColor === color ? 'border-white' : 'border-transparent'} shadow-lg shadow-${color}-500/20 transition-transform active:scale-95`}
-                />
-              ))}
-           </div>
-        </GlassCard>
-
-        <div className="text-center pt-8">
-           <p className="text-xs text-white/20">Vibe code by Clay . Powered by Gemini AI</p>
-        </div>
+         {/* Data Management */}
+         <GlassCard title="Data & Backup" icon={<Cloud className="w-5 h-5 text-white/50" />}>
+            <div className="grid grid-cols-2 gap-3">
+               <button 
+                 onClick={handleExportBackup}
+                 className="flex flex-col items-center justify-center gap-2 py-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
+               >
+                 <Download className="w-5 h-5 text-white/70" />
+                 <span className="text-xs font-medium text-white/60">Export Data</span>
+               </button>
+               
+               <button 
+                 onClick={() => backupInputRef.current?.click()}
+                 className="flex flex-col items-center justify-center gap-2 py-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
+               >
+                 <Upload className="w-5 h-5 text-white/70" />
+                 <span className="text-xs font-medium text-white/60">Import Backup</span>
+               </button>
+               <input type="file" ref={backupInputRef} className="hidden" accept=".json" onChange={handleImportBackup} />
+            </div>
+         </GlassCard>
       </div>
     );
   };
@@ -771,6 +695,7 @@ const App: React.FC = () => {
 
     const zones = calculateZones();
     const parsed = viewingWorkout.parsedData;
+    const deepAnalysis = viewingWorkout.extendedAnalysis;
     
     // Safety check for zone chart
     let zoneDist: number[] = [];
@@ -785,31 +710,160 @@ const App: React.FC = () => {
             <button onClick={() => setViewingWorkout(null)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
                <ChevronRight className="w-6 h-6 rotate-180 text-white" />
             </button>
-            <h2 className="text-lg font-bold text-white">Workout Analysis</h2>
+            <div className="flex-1">
+               <h2 className="text-lg font-bold text-white leading-tight">{deepAnalysis?.title || 'Workout Analysis'}</h2>
+               <p className="text-xs text-white/50">{new Date(viewingWorkout.timestamp).toDateString()}</p>
+            </div>
          </div>
 
          <div className="p-4 space-y-6 max-w-2xl mx-auto pb-20">
-            {/* Summary Cards */}
-            <div className="grid grid-cols-2 gap-3">
+            
+            {/* 1. HERO METRICS GRID (Improved for deeper data) */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                <GlassCard className="!p-4 bg-white/5 flex flex-col items-center justify-center gap-1">
                   <span className="text-xs uppercase text-white/40">Distance</span>
                   <span className={`text-2xl font-bold ${getThemeColorClass('text')}`}>{viewingWorkout.distance || '-'}</span>
                </GlassCard>
                <GlassCard className="!p-4 bg-white/5 flex flex-col items-center justify-center gap-1">
-                   <span className="text-xs uppercase text-white/40">Avg Pace</span>
+                   <span className="text-xs uppercase text-white/40">Pace</span>
                    <span className="text-2xl font-bold text-white">{viewingWorkout.avgPace || '-'}</span>
-               </GlassCard>
-               <GlassCard className="!p-4 bg-white/5 flex flex-col items-center justify-center gap-1">
-                   <span className="text-xs uppercase text-white/40">Duration</span>
-                   <span className="text-xl font-bold text-white">{viewingWorkout.duration || '-'}</span>
                </GlassCard>
                <GlassCard className="!p-4 bg-white/5 flex flex-col items-center justify-center gap-1">
                    <span className="text-xs uppercase text-white/40">Avg HR</span>
                    <span className="text-xl font-bold text-red-400">{viewingWorkout.avgHr ? `${viewingWorkout.avgHr} bpm` : '-'}</span>
                </GlassCard>
+               <GlassCard className="!p-4 bg-white/5 flex flex-col items-center justify-center gap-1">
+                   <span className="text-xs uppercase text-white/40">Cadence</span>
+                   <span className="text-xl font-bold text-purple-400">{viewingWorkout.avgCadence ? `${viewingWorkout.avgCadence}` : '-'}</span>
+               </GlassCard>
+            </div>
+            
+            {/* Secondary Metrics Row */}
+            <div className="grid grid-cols-3 gap-3">
+               <div className="bg-white/5 rounded-xl p-3 flex flex-col items-center justify-center border border-white/5">
+                  <Mountain className="w-4 h-4 text-white/40 mb-1" />
+                  <span className="text-xs text-white/40">Gain</span>
+                  <span className="text-sm font-bold text-white">{viewingWorkout.elevationGain ? `${Math.round(viewingWorkout.elevationGain)}m` : '-'}</span>
+               </div>
+               <div className="bg-white/5 rounded-xl p-3 flex flex-col items-center justify-center border border-white/5">
+                  <Flame className="w-4 h-4 text-orange-400/70 mb-1" />
+                  <span className="text-xs text-white/40">Cals</span>
+                  <span className="text-sm font-bold text-white">{viewingWorkout.calories ? viewingWorkout.calories : '-'}</span>
+               </div>
+               <div className="bg-white/5 rounded-xl p-3 flex flex-col items-center justify-center border border-white/5">
+                  <Clock className="w-4 h-4 text-blue-400/70 mb-1" />
+                  <span className="text-xs text-white/40">Time</span>
+                  <span className="text-sm font-bold text-white">{viewingWorkout.duration || '-'}</span>
+               </div>
             </div>
 
-            {/* AI Feedback */}
+            {/* 2. DEEP ANALYSIS DASHBOARD */}
+            {deepAnalysis && (
+               <GlassCard className="bg-gradient-to-b from-white/10 to-transparent">
+                  <div className="flex items-center gap-2 mb-6">
+                     <BrainCircuit className="w-5 h-5 text-cyan-400" />
+                     <h3 className="text-lg font-bold text-white uppercase tracking-wide">Deep Dive</h3>
+                  </div>
+
+                  {/* Scores */}
+                  <div className="grid grid-cols-2 gap-6 mb-6">
+                      <div>
+                          <div className="flex justify-between items-center mb-1">
+                             <span className="text-xs font-bold text-white/60 uppercase">Quality</span>
+                             <span className="text-xs font-bold text-green-400">{deepAnalysis.qualityScore}%</span>
+                          </div>
+                          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                             <div className="h-full bg-gradient-to-r from-green-500 to-emerald-400" style={{width: `${deepAnalysis.qualityScore}%`}}></div>
+                          </div>
+                      </div>
+                      <div>
+                          <div className="flex justify-between items-center mb-1">
+                             <span className="text-xs font-bold text-white/60 uppercase">RPE (Effort)</span>
+                             <span className="text-xs font-bold text-yellow-400">{deepAnalysis.effortScore}/10</span>
+                          </div>
+                          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                             <div className="h-full bg-gradient-to-r from-yellow-500 to-red-500" style={{width: `${deepAnalysis.effortScore * 10}%`}}></div>
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* Summary Text */}
+                  <div className="p-4 bg-white/5 rounded-2xl border border-white/10 mb-6 relative overflow-hidden">
+                     <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500"></div>
+                     <p className="text-sm text-white/90 italic leading-relaxed">"{deepAnalysis.summary}"</p>
+                  </div>
+
+                  {/* Physiological Impact */}
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                     <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-500/20 rounded-lg"><Droplets className="w-4 h-4 text-blue-400" /></div>
+                        <div>
+                           <div className="text-[10px] uppercase text-white/40">Fluid Loss</div>
+                           <div className="text-sm font-bold text-white">~{deepAnalysis.hydrationEstimateMl}ml</div>
+                        </div>
+                     </div>
+                     <div className="flex items-center gap-3">
+                        <div className="p-2 bg-purple-500/20 rounded-lg"><Battery className="w-4 h-4 text-purple-400" /></div>
+                        <div>
+                           <div className="text-[10px] uppercase text-white/40">Full Recovery</div>
+                           <div className="text-sm font-bold text-white">{deepAnalysis.recoveryTimeHours} Hours</div>
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* Form & Pacing Analysis */}
+                  <div className="space-y-4">
+                     <div className="p-3 bg-black/20 rounded-xl">
+                        <div className="flex items-center gap-2 mb-1">
+                           <Footprints className="w-4 h-4 text-white/50" />
+                           <span className="text-xs font-bold text-white">Form & Efficiency</span>
+                        </div>
+                        <p className="text-xs text-white/60 leading-relaxed">{deepAnalysis.formAnalysis}</p>
+                     </div>
+                     <div className="p-3 bg-black/20 rounded-xl">
+                        <div className="flex items-center gap-2 mb-1">
+                           <Gauge className="w-4 h-4 text-white/50" />
+                           <span className="text-xs font-bold text-white">Pacing Strategy</span>
+                        </div>
+                        <p className="text-xs text-white/60 leading-relaxed">{deepAnalysis.pacingAnalysis}</p>
+                     </div>
+                  </div>
+               </GlassCard>
+            )}
+
+            {/* 3. Strengths & Weaknesses */}
+            {deepAnalysis && (
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-3xl bg-green-500/5 border border-green-500/10">
+                     <h4 className="flex items-center gap-2 text-xs font-bold uppercase text-green-400 mb-3">
+                        <ArrowUpRight className="w-4 h-4" /> Key Strengths
+                     </h4>
+                     <ul className="space-y-2">
+                        {deepAnalysis.keyStrengths.map((s, i) => (
+                           <li key={i} className="flex items-start gap-2 text-xs text-white/70">
+                              <span className="mt-1 w-1 h-1 rounded-full bg-green-500" />
+                              {s}
+                           </li>
+                        ))}
+                     </ul>
+                  </div>
+                  <div className="p-4 rounded-3xl bg-red-500/5 border border-red-500/10">
+                     <h4 className="flex items-center gap-2 text-xs font-bold uppercase text-red-400 mb-3">
+                        <ArrowDownRight className="w-4 h-4" /> Focus Areas
+                     </h4>
+                     <ul className="space-y-2">
+                        {deepAnalysis.areasForImprovement.map((s, i) => (
+                           <li key={i} className="flex items-start gap-2 text-xs text-white/70">
+                              <span className="mt-1 w-1 h-1 rounded-full bg-red-500" />
+                              {s}
+                           </li>
+                        ))}
+                     </ul>
+                  </div>
+               </div>
+            )}
+
+            {/* 4. COACH'S PLAN */}
             <GlassCard title="Coach's Analysis" icon={<Zap className="w-5 h-5 text-yellow-400" />}>
                <p className="text-sm text-white/80 leading-relaxed mb-4">{viewingWorkout.aiCoachFeedback}</p>
                <div className="p-3 rounded-lg bg-white/5 border border-white/10">
@@ -821,7 +875,7 @@ const App: React.FC = () => {
                </div>
             </GlassCard>
             
-            {/* Advanced Parsed Data (if available) */}
+            {/* 5. DATA CHARTS (Only if TCX available) */}
             {parsed && (
               <>
                  {/* Zone Distribution */}
@@ -864,8 +918,11 @@ const App: React.FC = () => {
                        {parsed.splits.map(split => (
                           <div key={split.kilometer} className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
                              <div className="text-sm text-white/60 w-8">{split.kilometer}</div>
-                             <div className="text-sm font-mono text-white">{formatDuration(split.timeSeconds)}</div>
-                             <div className="text-xs text-white/40 w-12 text-right">{split.avgHr > 0 ? `${split.avgHr} bpm` : '-'}</div>
+                             <div className="text-sm font-mono text-white flex-1 text-center">{formatDuration(split.timeSeconds)}</div>
+                             <div className="flex flex-col items-end w-20">
+                                <span className="text-xs text-red-400/80">{split.avgHr > 0 ? `${split.avgHr} bpm` : ''}</span>
+                                {split.avgCadence && split.avgCadence > 0 && <span className="text-[10px] text-purple-400/80">{split.avgCadence} spm</span>}
+                             </div>
                           </div>
                        ))}
                     </div>
