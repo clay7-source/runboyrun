@@ -28,6 +28,18 @@ export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { 
 };
 
 /**
+ * Returns the current system date and time string for AI context.
+ */
+const getCurrentTemporalContext = (): string => {
+  const now = new Date();
+  return `
+    TEMPORAL CONTEXT (System Time):
+    - Current Date: ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+    - Current Time: ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+  `;
+};
+
+/**
  * Calculates Karvonen HR Zones for context
  */
 const getKarvonenContext = (profile: AthleteProfile): string => {
@@ -84,6 +96,7 @@ HARD RULES (NON-NEGOTIABLE)
 - You MUST NOT override recovery or safety decisions made by code.
 - You MUST NOT use medical or diagnostic language.
 - You MUST treat all biometric interpretation as ESTIMATED and CONTEXTUAL.
+- You MUST be aware of the TEMPORAL CONTEXT (Date/Time). If a screenshot date conflicts with System Time, point it out.
 
 ==================================================
 IDENTITY & VOICE
@@ -97,11 +110,13 @@ export const analyzeVitals = async (
   files: File[], 
   profile: AthleteProfile, 
   todaysPlannedWorkout?: string, 
-  recentHistoryContext?: string
+  recentHistoryContext?: string,
+  previousReadinessContext?: string
 ) => {
   // Convert all files to generative parts
   const imageParts = await Promise.all(files.map(f => fileToGenerativePart(f)));
   const context = getKarvonenContext(profile);
+  const temporalContext = getCurrentTemporalContext();
   
   let planContext = "";
   if (todaysPlannedWorkout) {
@@ -119,6 +134,13 @@ export const analyzeVitals = async (
     *Use this history to distinguish between acute training fatigue (expected) and sickness/burnout (unexpected).*
   ` : "CONTEXT - RECENT TRAINING HISTORY: None available.";
 
+  const readinessContextString = previousReadinessContext ? `
+    CONTEXT - PREVIOUS READINESS DATA (Last Scan):
+    ${previousReadinessContext}
+    
+    *Compare today's data with this previous data to identify trends (e.g., declining HRV, rising RHR).*
+  ` : "CONTEXT - PREVIOUS READINESS DATA: None available.";
+
   const prompt = `
     ${COACHING_SYSTEM_PROMPT}
 
@@ -126,14 +148,18 @@ export const analyzeVitals = async (
     
     Analyze these images of morning vitals (HRV, RHR, Sleep, etc.).
     
+    ${temporalContext}
+    
     ATHLETE CONTEXT:
     ${context}
     ${planContext}
     ${historyContextString}
+    ${readinessContextString}
 
     Apply the "MORNING DECISION" responsibility:
     - Does today’s readiness SUPPORT the planned intent?
     - Should the runner PROTECT the session (reduce intensity, keep distance) or EXECUTE as planned?
+    - Check timestamps in images against System Time. If data is old (e.g. from yesterday), warn the user in the recommendation.
     
     Note: You may recommend holding the run strictly in Zone 2 or focusing on form, but DO NOT cancel the workout unless it is already a rest day.
 
@@ -168,10 +194,18 @@ export const analyzeVitals = async (
   return JSON.parse(response.text || '{}');
 };
 
-export const analyzeWorkoutImage = async (files: File[], profile: AthleteProfile, readinessContext?: string) => {
+export const analyzeWorkoutImage = async (files: File[], profile: AthleteProfile, readinessContext?: string, recentHistoryContext?: string) => {
   // Convert all files to generative parts
   const imageParts = await Promise.all(files.map(f => fileToGenerativePart(f)));
   const context = getKarvonenContext(profile);
+  const temporalContext = getCurrentTemporalContext();
+
+  const historyContextString = recentHistoryContext ? `
+    CONTEXT - RECENT TRAINING HISTORY (Last 5 Days):
+    ${recentHistoryContext}
+    
+    *Use this to judge if today's performance is consistent, a breakthrough, or a sign of fatigue based on recent load.*
+  ` : "CONTEXT - RECENT TRAINING HISTORY: None available.";
 
   const prompt = `
     ${COACHING_SYSTEM_PROMPT}
@@ -179,9 +213,12 @@ export const analyzeWorkoutImage = async (files: File[], profile: AthleteProfile
     TASK: POST-RUN INTEGRATION (Image Analysis)
     Analyze these workout screenshots (Strava/Apple Watch/Garmin/TrainingPeaks).
     
+    ${temporalContext}
+
     ATHLETE CONTEXT:
     ${context}
     ${readinessContext || "Readiness Context: Unknown"}
+    ${historyContextString}
 
     1. Extract key metrics if visible (Total Distance, Total Time, Avg Pace, Avg HR). Prioritize the most accurate summary data found.
     
@@ -221,7 +258,7 @@ export const analyzeWorkoutImage = async (files: File[], profile: AthleteProfile
   return JSON.parse(response.text || '{}');
 };
 
-export const analyzeTcxFile = async (file: File, profile: AthleteProfile, readinessContext?: string) => {
+export const analyzeTcxFile = async (file: File, profile: AthleteProfile, readinessContext?: string, recentHistoryContext?: string) => {
   // 1. DETERMINISTIC PARSING (Code Only)
   const text = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -231,9 +268,17 @@ export const analyzeTcxFile = async (file: File, profile: AthleteProfile, readin
   });
 
   const parsedData = parseTcxFileContent(text);
+  const temporalContext = getCurrentTemporalContext();
 
   // 2. AI COACHING (Uses Parsed Data)
   const context = getKarvonenContext(profile);
+
+  const historyContextString = recentHistoryContext ? `
+    CONTEXT - RECENT TRAINING HISTORY (Last 5 Days):
+    ${recentHistoryContext}
+    
+    *Use this to judge if today's performance is consistent, a breakthrough, or a sign of fatigue based on recent load.*
+  ` : "CONTEXT - RECENT TRAINING HISTORY: None available.";
   
   // Create a clean JSON summary for the AI
   const runSummary = {
@@ -252,12 +297,15 @@ export const analyzeTcxFile = async (file: File, profile: AthleteProfile, readin
     TASK: POST-RUN INTEGRATION (TCX Analysis)
     I have mathematically parsed a TCX file. INTERPRET this data.
     
+    ${temporalContext}
+
     RUN DATA:
     ${JSON.stringify(runSummary, null, 2)}
     
     ATHLETE CONTEXT:
     ${context}
     ${readinessContext || "Readiness Context: Unknown"}
+    ${historyContextString}
 
     Apply the "POST-RUN INTEGRATION" responsibility:
     - Connect the splits and HR drift to the big picture.
@@ -306,12 +354,15 @@ export const generateTrainingPlan = async (
   preferences: { longRunDay: string; workoutDay: string; notes: string }
 ): Promise<TrainingPlan> => {
   const context = getKarvonenContext(profile);
+  const temporalContext = getCurrentTemporalContext();
   
   const prompt = `
     ${COACHING_SYSTEM_PROMPT}
 
     TASK: PLAN GENERATION
     Create a 4-week structured running training plan for this athlete.
+    
+    ${temporalContext}
 
     ATHLETE CONTEXT:
     ${context}
