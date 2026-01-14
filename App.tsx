@@ -422,7 +422,7 @@ const App: React.FC = () => {
 
     return (
       <div className="flex flex-col items-center justify-center p-4 min-w-[100px]">
-         <span className={`text-7xl font-bold ${colorClass} leading-none tracking-tighter drop-shadow-lg`}>{score}</span>
+         <span className={`text-7xl font-bold ${colorClass} leading-none tracking-tighter`}>{score}</span>
       </div>
     );
   };
@@ -446,7 +446,7 @@ const App: React.FC = () => {
               <div className="py-2">
                 {!isManualInputOpen ? (
                    <div className="text-center py-4">
-                     <p className="text-white/60 text-sm mb-6">How well did you recover? Analyze your sleep/HRV data to get a daily recommendation.</p>
+                     <p className="text-white/40 text-sm mb-6">How well did you recover? Analyze your sleep/HRV data to get a daily recommendation.</p>
                      
                      <div className="flex flex-col gap-3">
                         <button 
@@ -516,13 +516,13 @@ const App: React.FC = () => {
                  <div className="flex items-center gap-4">
                     {renderReadinessScore(readiness.score)}
                     <div className="flex-1 pl-4 border-l border-white/10">
-                      <h4 className="text-xl font-bold text-white mb-1 drop-shadow-md">{readiness.status}</h4>
-                      <p className="text-xs text-white/70 leading-relaxed font-medium">{readiness.summary}</p>
+                      <h4 className="text-xl font-bold text-white mb-1">{readiness.status}</h4>
+                      <p className="text-xs text-white/60 leading-relaxed">{readiness.summary}</p>
                     </div>
                  </div>
                  {/* Recommendation Card Inline */}
                  <div className={`mt-2 relative overflow-hidden rounded-xl p-[1px] bg-gradient-to-r ${getThemeColorClass('from')} ${getThemeColorClass('to')} shadow-lg shadow-black/20`}>
-                    <div className="bg-slate-900/90 backdrop-blur-sm rounded-[11px] p-4 relative">
+                    <div className="bg-slate-900 rounded-[11px] p-4 relative">
                         <div className="flex items-center gap-2 mb-2">
                            <Play className={`w-4 h-4 ${getThemeColorClass('text')} fill-current`} />
                            <h3 className="text-xs font-bold uppercase tracking-wide text-white">Daily Prescription</h3>
@@ -554,23 +554,19 @@ const App: React.FC = () => {
          <div className="grid grid-cols-2 gap-3">
             <button 
               onClick={() => workoutImageInputRef.current?.click()}
-              className="flex flex-col items-center justify-center gap-2 py-6 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-all active:scale-95 shadow-lg group"
+              className="flex flex-col items-center justify-center gap-2 py-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all active:scale-95"
             >
-              <div className={`p-3 rounded-full bg-white/5 group-hover:scale-110 transition-transform`}>
-                 <ImageIcon className={`w-6 h-6 ${getThemeColorClass('text')}`} />
-              </div>
-              <span className="text-xs font-bold text-white/80 uppercase tracking-wide mt-2">Screenshot</span>
+              <ImageIcon className={`w-5 h-5 ${getThemeColorClass('text')}`} />
+              <span className="text-xs font-medium text-white/70">Analyze Screenshot</span>
             </button>
             <input type="file" ref={workoutImageInputRef} className="hidden" accept="image/*" multiple onChange={(e) => handleFileUpload(e, AnalysisType.WORKOUT_IMAGE)} />
 
             <button 
               onClick={() => tcxInputRef.current?.click()}
-              className="flex flex-col items-center justify-center gap-2 py-6 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-all active:scale-95 shadow-lg group"
+              className="flex flex-col items-center justify-center gap-2 py-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all active:scale-95"
             >
-              <div className={`p-3 rounded-full bg-white/5 group-hover:scale-110 transition-transform`}>
-                 <FileCode className={`w-6 h-6 ${getThemeColorClass('text')}`} />
-              </div>
-              <span className="text-xs font-bold text-white/80 uppercase tracking-wide mt-2">TCX File</span>
+              <FileCode className={`w-5 h-5 ${getThemeColorClass('text')}`} />
+              <span className="text-xs font-medium text-white/70">Analyze TCX</span>
             </button>
             <input type="file" ref={tcxInputRef} className="hidden" accept=".tcx, .xml" onChange={(e) => handleFileUpload(e, AnalysisType.WORKOUT_TCX)} />
          </div>
@@ -581,13 +577,13 @@ const App: React.FC = () => {
                  <div>
                     <h3 className="text-xs font-bold uppercase text-white/40 mb-1">Weekly Volume</h3>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-bold text-white drop-shadow-md">{weeklyVolume.toFixed(1)}</span>
+                      <span className="text-3xl font-bold text-white">{weeklyVolume.toFixed(1)}</span>
                       <span className="text-sm text-white/50">km</span>
                     </div>
                  </div>
                  <div>
                     <h3 className="text-xs font-bold uppercase text-white/40 mb-1 text-right">Activities</h3>
-                    <div className="text-2xl font-bold text-white text-right drop-shadow-md">{history.length}</div>
+                    <div className="text-2xl font-bold text-white text-right">{history.length}</div>
                  </div>
              </div>
              
@@ -597,7 +593,7 @@ const App: React.FC = () => {
                   <p className="text-xs text-white/20 italic">No workouts analyzed yet.</p>
                 ) : (
                   history.slice(0, 3).map(workout => (
-                    <div key={workout.id} onClick={() => { setViewingWorkout(workout); window.scrollTo(0,0); }} className="group cursor-pointer flex items-center justify-between p-3 rounded-xl bg-white/5 border border-transparent hover:border-white/20 hover:bg-white/10 transition-all">
+                    <div key={workout.id} onClick={() => { setViewingWorkout(workout); window.scrollTo(0,0); }} className="group cursor-pointer flex items-center justify-between p-3 rounded-xl bg-white/5 border border-transparent hover:border-white/20 transition-all">
                        <div className="flex items-center gap-3">
                           <div className={`p-2 rounded-full ${getThemeColorClass('bg')} bg-opacity-20`}>
                              <Activity className={`w-4 h-4 ${getThemeColorClass('text')}`} />
@@ -934,9 +930,6 @@ const App: React.FC = () => {
 
     return (
       <div className="fixed inset-0 z-50 bg-[#0f172a] overflow-y-auto animate-fade-in">
-         {/* Noise overlay also for detailed view */}
-         <div className="fixed inset-0 z-[-1] bg-noise pointer-events-none opacity-20"></div>
-
          {/* Header */}
          <div className="sticky top-0 z-50 bg-[#0f172a]/80 backdrop-blur-xl border-b border-white/10 p-4 flex items-center gap-4">
             <button onClick={() => setViewingWorkout(null)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
@@ -1202,52 +1195,47 @@ const App: React.FC = () => {
   if (!isDataLoaded) return <div className="min-h-screen bg-[#0f172a] flex items-center justify-center"><Loader2 className="w-8 h-8 text-cyan-500 animate-spin" /></div>;
 
   return (
-    <div className={`min-h-screen font-sans bg-[#0f172a] text-white relative selection:${getThemeColorClass('bg')} selection:text-white overflow-hidden`}>
-      {/* Noise Texture Overlay */}
-      <div className="fixed inset-0 z-0 bg-noise opacity-20 pointer-events-none"></div>
-
-      {/* Background Blobs - Liquid Effect */}
-      <div className={`fixed top-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full bg-${settings.themeColor}-600/20 blur-[120px] animate-blob mix-blend-screen`} />
-      <div className="fixed bottom-[-10%] right-[-10%] w-[500px] h-[500px] rounded-full bg-blue-600/15 blur-[100px] animate-blob-slow mix-blend-screen" />
-      <div className="fixed top-[40%] left-[30%] w-[300px] h-[300px] rounded-full bg-purple-600/10 blur-[80px] animate-blob animation-delay-4000 mix-blend-screen" />
+    <div className={`min-h-screen font-sans bg-[#0f172a] text-white relative selection:${getThemeColorClass('bg')} selection:text-white`}>
+      {/* Background Blobs */}
+      <div className={`fixed top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-${settings.themeColor}-600/20 blur-[100px] animate-blob`} />
+      <div className="fixed bottom-[-10%] right-[-10%] w-[400px] h-[400px] rounded-full bg-blue-600/10 blur-[80px] animate-blob animation-delay-2000" />
 
       {/* Main Content */}
       <main className="relative z-10 max-w-md mx-auto min-h-screen pb-24 flex flex-col">
          {/* Header */}
-         <div className="p-6 pb-2 flex justify-between items-center z-20">
+         <div className="p-6 pb-2 flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white drop-shadow-lg">Run Boy Run</h1>
-              <p className="text-xs text-white/50 uppercase tracking-widest font-semibold">AI Coach</p>
+              <h1 className="text-2xl font-bold tracking-tight text-white">Run Boy Run</h1>
+              <p className="text-xs text-white/50 uppercase tracking-widest">AI Coach</p>
             </div>
             {user && user.isAuthenticated ? (
                <div className={`w-8 h-8 rounded-full bg-gradient-to-tr from-${settings.themeColor}-400 to-${settings.themeColor}-600 flex items-center justify-center text-white font-bold text-xs shadow-lg ring-2 ring-white/10`}>
                   {user.name.charAt(0)}
                </div>
             ) : (
-               <div className={`w-2 h-2 rounded-full ${getThemeColorClass('bg')} shadow-[0_0_15px_rgba(34,211,238,0.8)]`} />
+               <div className={`w-2 h-2 rounded-full ${getThemeColorClass('bg')} shadow-[0_0_10px_rgba(34,211,238,0.5)]`} />
             )}
          </div>
 
          {/* Content Area */}
-         <div className="flex-1 p-4 z-20">
+         <div className="flex-1 p-4">
              {activeTab === 'timeline' && renderTimelineView()}
              {activeTab === 'plan' && renderPlanView()}
              {activeTab === 'settings' && renderSettingsView()}
          </div>
 
          {/* Navigation Bar */}
-         <div className="fixed bottom-0 left-0 w-full z-40 bg-[#0f172a]/60 backdrop-blur-3xl border-t border-white/5">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+         <div className="fixed bottom-0 left-0 w-full z-40 bg-[#0f172a]/80 backdrop-blur-xl border-t border-white/10">
             <div className="max-w-md mx-auto grid grid-cols-3 h-20 items-center justify-items-center">
-               <button onClick={() => setActiveTab('timeline')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'timeline' ? 'text-white scale-105 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'text-white/40 hover:text-white/60'}`}>
+               <button onClick={() => setActiveTab('timeline')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'timeline' ? 'text-white scale-105' : 'text-white/40 hover:text-white/60'}`}>
                   <Activity className="w-6 h-6" />
                   <span className="text-[10px] font-medium uppercase tracking-wide">Coach</span>
                </button>
-               <button onClick={() => setActiveTab('plan')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'plan' ? 'text-white scale-105 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'text-white/40 hover:text-white/60'}`}>
+               <button onClick={() => setActiveTab('plan')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'plan' ? 'text-white scale-105' : 'text-white/40 hover:text-white/60'}`}>
                   <Calendar className="w-6 h-6" />
                   <span className="text-[10px] font-medium uppercase tracking-wide">Plan</span>
                </button>
-               <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'settings' ? 'text-white scale-105 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'text-white/40 hover:text-white/60'}`}>
+               <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'settings' ? 'text-white scale-105' : 'text-white/40 hover:text-white/60'}`}>
                   <Settings className="w-6 h-6" />
                   <span className="text-[10px] font-medium uppercase tracking-wide">Settings</span>
                </button>
@@ -1259,7 +1247,7 @@ const App: React.FC = () => {
       {viewingWorkout && renderWorkoutDetail()}
       
       {isLoading && (
-        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center">
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
            <Loader2 className={`w-12 h-12 ${getThemeColorClass('text')} animate-spin mb-4`} />
            <h3 className="text-xl font-bold text-white mb-2">{loadingMessage}</h3>
            <p className="text-sm text-white/50">Analyzing data points & generating insights...</p>
@@ -1267,7 +1255,7 @@ const App: React.FC = () => {
       )}
 
       {uploadError && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[70] w-[90%] max-w-sm bg-red-500/10 border border-red-500/50 backdrop-blur-xl p-4 rounded-2xl flex items-start gap-3 shadow-2xl">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[70] w-[90%] max-w-sm bg-red-500/10 border border-red-500/50 backdrop-blur-md p-4 rounded-2xl flex items-start gap-3 shadow-2xl">
            <div className="p-1 bg-red-500 rounded-full mt-0.5"><X className="w-3 h-3 text-white" /></div>
            <div className="flex-1">
              <h4 className="text-sm font-bold text-white mb-1">Notice</h4>
