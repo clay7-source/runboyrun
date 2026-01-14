@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { AthleteProfile, ReadinessData, WorkoutAnalysis, AnalysisType, HrZone, AppSettings, TrainingPlan, ScheduledWorkout, UserProfile } from './types';
+import { AthleteProfile, ReadinessData, WorkoutAnalysis, AnalysisType, HrZone, AppSettings, TrainingPlan, ScheduledWorkout, UserProfile, DataPoint } from './types';
 import { analyzeVitals, analyzeWorkoutImage, analyzeTcxFile, generateTrainingPlan } from './services/geminiService';
 import { formatDuration, formatPace } from './services/tcxParser';
 import { saveProfile, loadProfile, saveReadiness, loadReadiness, saveHistory, loadHistory, saveSettings, loadSettings, savePlan, loadPlan, savePlanPrefs, loadPlanPrefs, saveUser, loadUser, createBackup, restoreBackup } from './services/storage';
 import { GlassCard } from './components/GlassCard';
 import { AthleteProfile as ProfileComponent } from './components/AthleteProfile';
-import { Activity, Battery, Upload, Zap, ChevronRight, FileCode, ImageIcon, Loader2, TrendingUp, Mountain, History, Calendar, MapPin, Play, Settings, List, X, BarChart, Medal, Flame, Trash2, PlusCircle, CheckCircle, Clock, Cloud, Download, LogOut, ShieldAlert, AlertTriangle, Droplets, Gauge, BrainCircuit, Footprints, ArrowUpRight, ArrowDownRight, Wind, User } from 'lucide-react';
+import { Activity, Battery, Upload, Zap, ChevronRight, FileCode, ImageIcon, Loader2, TrendingUp, Mountain, History, Calendar, MapPin, Play, Settings, List, X, BarChart, Medal, Flame, Trash2, PlusCircle, CheckCircle, Clock, Cloud, Download, LogOut, ShieldAlert, AlertTriangle, Droplets, Gauge, BrainCircuit, Footprints, ArrowUpRight, ArrowDownRight, Wind, User, BarChart2 } from 'lucide-react';
 
 const INITIAL_PROFILE: AthleteProfile = {
   name: '',
@@ -167,19 +167,34 @@ const App: React.FC = () => {
     ];
   };
 
-  const calculateTimeInZones = (splits: { avgHr: number, timeSeconds: number }[]) => {
+  // Use High-Res Buckets if available, otherwise fallback to splits
+  const calculateTimeInZones = (analysis: WorkoutAnalysis) => {
     const zones = calculateZones();
     const distribution = [0, 0, 0, 0, 0];
-    splits.forEach(split => {
-      let zoneIndex = 0;
-      if (split.avgHr >= zones[4].min) zoneIndex = 4;
-      else if (split.avgHr >= zones[3].min) zoneIndex = 3;
-      else if (split.avgHr >= zones[2].min) zoneIndex = 2;
-      else if (split.avgHr >= zones[1].min) zoneIndex = 1;
-      distribution[zoneIndex] += split.timeSeconds;
-    });
-    const total = distribution.reduce((a, b) => a + b, 0);
-    return distribution.map(d => total > 0 ? (d / total) * 100 : 0);
+    
+    if (analysis.parsedData?.heartRateBuckets) {
+       // High Res Exact Calculation
+       Object.entries(analysis.parsedData.heartRateBuckets).forEach(([hrStr, seconds]) => {
+          const hr = parseInt(hrStr);
+          if (hr >= zones[4].min) distribution[4] += seconds;
+          else if (hr >= zones[3].min) distribution[3] += seconds;
+          else if (hr >= zones[2].min) distribution[2] += seconds;
+          else if (hr >= zones[1].min) distribution[1] += seconds;
+          else if (hr > 40) distribution[0] += seconds; // Basic filter for sensor noise
+       });
+    } else if (analysis.parsedData?.splits) {
+       // Fallback to averages (less accurate)
+       analysis.parsedData.splits.forEach(split => {
+         let zoneIndex = 0;
+         if (split.avgHr >= zones[4].min) zoneIndex = 4;
+         else if (split.avgHr >= zones[3].min) zoneIndex = 3;
+         else if (split.avgHr >= zones[2].min) zoneIndex = 2;
+         else if (split.avgHr >= zones[1].min) zoneIndex = 1;
+         distribution[zoneIndex] += split.timeSeconds;
+       });
+    }
+
+    return distribution;
   };
 
   const handleProfileSave = (newProfile: AthleteProfile) => {
@@ -690,6 +705,61 @@ const App: React.FC = () => {
     );
   };
 
+  // Helper to draw Simple SVG Chart
+  const SimpleChart = ({ data, type, height = 100, color = "#22d3ee" }: { data: DataPoint[], type: 'ele' | 'hr', height?: number, color?: string }) => {
+     if (!data || data.length === 0) return null;
+     
+     const width = 300;
+     const maxDist = data[data.length - 1].dist;
+     
+     // Y-Axis scaling
+     let minVal = Infinity;
+     let maxVal = -Infinity;
+     
+     data.forEach(d => {
+       const val = type === 'ele' ? d.ele : d.hr;
+       if (val < minVal) minVal = val;
+       if (val > maxVal) maxVal = val;
+     });
+     
+     // Add padding
+     const range = maxVal - minVal;
+     minVal = Math.max(0, minVal - range * 0.1);
+     maxVal = maxVal + range * 0.1;
+     
+     const points = data.map((d, i) => {
+        const x = (d.dist / maxDist) * width;
+        const val = type === 'ele' ? d.ele : d.hr;
+        const y = height - ((val - minVal) / (maxVal - minVal)) * height;
+        return `${x},${y}`;
+     }).join(' ');
+
+     return (
+        <div className="relative w-full h-full">
+           <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+              {type === 'ele' ? (
+                 <>
+                   <defs>
+                      <linearGradient id="eleGradient" x1="0" x2="0" y1="0" y2="1">
+                         <stop offset="0%" stopColor={color} stopOpacity="0.5" />
+                         <stop offset="100%" stopColor={color} stopOpacity="0" />
+                      </linearGradient>
+                   </defs>
+                   <path d={`M0,${height} ${points} L${width},${height} Z`} fill="url(#eleGradient)" />
+                   <path d={`M0,${height} ${points}`} fill="none" stroke={color} strokeWidth="1.5" />
+                 </>
+              ) : (
+                 <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              )}
+           </svg>
+           {/* Axis Labels */}
+           <div className="absolute bottom-0 right-0 text-[10px] text-white/30">{Math.round(maxDist/1000)}km</div>
+           <div className="absolute top-0 left-0 text-[10px] text-white/30">{Math.round(maxVal)}{type==='ele'?'m':'bpm'}</div>
+           <div className="absolute bottom-0 left-0 text-[10px] text-white/30">{Math.round(minVal)}{type==='ele'?'m':'bpm'}</div>
+        </div>
+     );
+  };
+
   const renderWorkoutDetail = () => {
     if (!viewingWorkout) return null;
 
@@ -698,10 +768,11 @@ const App: React.FC = () => {
     const deepAnalysis = viewingWorkout.extendedAnalysis;
     
     // Safety check for zone chart
-    let zoneDist: number[] = [];
-    if (parsed && parsed.splits) {
-      zoneDist = calculateTimeInZones(parsed.splits);
+    let zoneSeconds: number[] = [0,0,0,0,0];
+    if (parsed) {
+      zoneSeconds = calculateTimeInZones(viewingWorkout);
     }
+    const totalSeconds = zoneSeconds.reduce((a,b) => a+b, 0) || 1;
 
     return (
       <div className="fixed inset-0 z-50 bg-[#0f172a] overflow-y-auto animate-fade-in">
@@ -718,7 +789,7 @@ const App: React.FC = () => {
 
          <div className="p-4 space-y-6 max-w-2xl mx-auto pb-20">
             
-            {/* 1. HERO METRICS GRID (Improved for deeper data) */}
+            {/* 1. HERO METRICS GRID */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                <GlassCard className="!p-4 bg-white/5 flex flex-col items-center justify-center gap-1">
                   <span className="text-xs uppercase text-white/40">Distance</span>
@@ -737,27 +808,66 @@ const App: React.FC = () => {
                    <span className="text-xl font-bold text-purple-400">{viewingWorkout.avgCadence ? `${viewingWorkout.avgCadence}` : '-'}</span>
                </GlassCard>
             </div>
-            
-            {/* Secondary Metrics Row */}
-            <div className="grid grid-cols-3 gap-3">
-               <div className="bg-white/5 rounded-xl p-3 flex flex-col items-center justify-center border border-white/5">
-                  <Mountain className="w-4 h-4 text-white/40 mb-1" />
-                  <span className="text-xs text-white/40">Gain</span>
-                  <span className="text-sm font-bold text-white">{viewingWorkout.elevationGain ? `${Math.round(viewingWorkout.elevationGain)}m` : '-'}</span>
-               </div>
-               <div className="bg-white/5 rounded-xl p-3 flex flex-col items-center justify-center border border-white/5">
-                  <Flame className="w-4 h-4 text-orange-400/70 mb-1" />
-                  <span className="text-xs text-white/40">Cals</span>
-                  <span className="text-sm font-bold text-white">{viewingWorkout.calories ? viewingWorkout.calories : '-'}</span>
-               </div>
-               <div className="bg-white/5 rounded-xl p-3 flex flex-col items-center justify-center border border-white/5">
-                  <Clock className="w-4 h-4 text-blue-400/70 mb-1" />
-                  <span className="text-xs text-white/40">Time</span>
-                  <span className="text-sm font-bold text-white">{viewingWorkout.duration || '-'}</span>
-               </div>
-            </div>
 
-            {/* 2. DEEP ANALYSIS DASHBOARD */}
+            {/* 2. PERFORMANCE CHARTS (ELEVATION & HR) */}
+            {parsed && parsed.seriesSample.length > 0 && (
+                <GlassCard title="Performance Charts" icon={<BarChart2 className="w-5 h-5 text-cyan-400"/>}>
+                    <div className="space-y-6">
+                        {/* Elevation Chart */}
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <Mountain className="w-3 h-3 text-white/40" />
+                                <span className="text-xs uppercase text-white/40 font-bold">Elevation Profile</span>
+                            </div>
+                            <div className="h-24 w-full">
+                                <SimpleChart data={parsed.seriesSample} type="ele" color="#94a3b8" />
+                            </div>
+                        </div>
+                        
+                        {/* HR Chart */}
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <Activity className="w-3 h-3 text-red-400/60" />
+                                <span className="text-xs uppercase text-white/40 font-bold">Heart Rate</span>
+                            </div>
+                            <div className="h-24 w-full">
+                                <SimpleChart data={parsed.seriesSample} type="hr" color="#ef4444" />
+                            </div>
+                        </div>
+                    </div>
+                </GlassCard>
+            )}
+
+            {/* 3. ZONE DISTRIBUTION */}
+            {parsed && (
+                 <GlassCard title="Heart Rate Zones" icon={<Activity className="w-4 h-4 text-red-500" />}>
+                     <div className="space-y-3 mt-1">
+                        {zones.map((zone, idx) => {
+                           const seconds = zoneSeconds[idx] || 0;
+                           const pct = (seconds / totalSeconds) * 100;
+                           const colors = ['bg-gray-400', 'bg-blue-400', 'bg-green-500', 'bg-orange-500', 'bg-red-600'];
+                           const textColors = ['text-gray-400', 'text-blue-400', 'text-green-500', 'text-orange-500', 'text-red-500'];
+                           
+                           return (
+                              <div key={idx} className="flex flex-col gap-1">
+                                 <div className="flex justify-between items-end text-xs">
+                                     <span className={`font-bold ${textColors[idx]}`}>Zone {zone.zone} <span className="text-white/30 font-normal ml-1">({zone.min}-{zone.max} bpm)</span></span>
+                                     <div className="flex gap-2">
+                                         <span className="text-white font-mono">{formatDuration(seconds)}</span>
+                                         <span className="text-white/40 w-8 text-right">{Math.round(pct)}%</span>
+                                     </div>
+                                 </div>
+                                 <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                                    <div className={`h-full ${colors[idx]} transition-all duration-500`} style={{ width: `${pct}%` }}></div>
+                                 </div>
+                              </div>
+                           )
+                        })}
+                     </div>
+                 </GlassCard>
+            )}
+
+            {/* 4. DEEP ANALYSIS DASHBOARD */}
             {deepAnalysis && (
                <GlassCard className="bg-gradient-to-b from-white/10 to-transparent">
                   <div className="flex items-center gap-2 mb-6">
@@ -831,7 +941,7 @@ const App: React.FC = () => {
                </GlassCard>
             )}
 
-            {/* 3. Strengths & Weaknesses */}
+            {/* 5. STRENGTHS & WEAKNESSES */}
             {deepAnalysis && (
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-4 rounded-3xl bg-green-500/5 border border-green-500/10">
@@ -863,7 +973,7 @@ const App: React.FC = () => {
                </div>
             )}
 
-            {/* 4. COACH'S PLAN */}
+            {/* 6. COACH'S PLAN */}
             <GlassCard title="Coach's Analysis" icon={<Zap className="w-5 h-5 text-yellow-400" />}>
                <p className="text-sm text-white/80 leading-relaxed mb-4">{viewingWorkout.aiCoachFeedback}</p>
                <div className="p-3 rounded-lg bg-white/5 border border-white/10">
@@ -875,29 +985,9 @@ const App: React.FC = () => {
                </div>
             </GlassCard>
             
-            {/* 5. DATA CHARTS (Only if TCX available) */}
+            {/* 7. SPLITS & BEST EFFORTS */}
             {parsed && (
               <>
-                 {/* Zone Distribution */}
-                 <GlassCard title="Zone Distribution">
-                    <div className="space-y-2 mt-2">
-                       {zones.map((zone, idx) => {
-                          const pct = zoneDist[idx] || 0;
-                          if (pct === 0) return null;
-                          return (
-                             <div key={idx} className="flex items-center gap-2 text-xs">
-                                <div className="w-8 text-white/50">Z{zone.zone}</div>
-                                <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-                                   <div className={`h-full ${['bg-gray-400', 'bg-blue-400', 'bg-green-400', 'bg-orange-400', 'bg-red-500'][idx]}`} style={{ width: `${pct}%` }}></div>
-                                </div>
-                                <div className="w-8 text-right text-white/80">{Math.round(pct)}%</div>
-                             </div>
-                          )
-                       })}
-                    </div>
-                 </GlassCard>
-
-                 {/* Best Efforts */}
                  {parsed.bestEfforts && parsed.bestEfforts.length > 0 && (
                     <GlassCard title="Best Efforts" icon={<Medal className="w-4 h-4 text-yellow-500" />}>
                         <div className="grid grid-cols-3 gap-2">
@@ -912,7 +1002,6 @@ const App: React.FC = () => {
                     </GlassCard>
                  )}
 
-                 {/* Splits */}
                  <GlassCard title="Splits" icon={<List className="w-4 h-4 text-white/50" />}>
                     <div className="space-y-1">
                        {parsed.splits.map(split => (
