@@ -14,12 +14,21 @@ export const parseTcxFileContent = (xmlContent: string): ParsedActivityData => {
     throw new Error("No trackpoints found in TCX file.");
   }
 
+  // Activity Totals (Try to find them in the header first)
+  const caloriesNode = xmlDoc.querySelector("Calories");
+  const totalCalories = caloriesNode ? parseInt(caloriesNode.textContent || "0") : undefined;
+
   let totalDistance = 0;
   let startTime = 0;
   let endTime = 0;
+  
   let heartRateSum = 0;
   let heartRateCount = 0;
   let maxHr = 0;
+  
+  let cadenceSum = 0;
+  let cadenceCount = 0;
+
   let elevationGain = 0;
   let lastAltitude = -9999;
 
@@ -28,6 +37,9 @@ export const parseTcxFileContent = (xmlContent: string): ParsedActivityData => {
   let currentSplitStartTime = 0;
   let currentSplitHrSum = 0;
   let currentSplitHrCount = 0;
+  let currentSplitCadenceSum = 0;
+  let currentSplitCadenceCount = 0;
+  let lastSplitDistance = 0;
   let splitIndex = 1;
 
   // Sampling for charts (Target ~150 points)
@@ -35,7 +47,6 @@ export const parseTcxFileContent = (xmlContent: string): ParsedActivityData => {
   const seriesSample: DataPoint[] = [];
 
   // Best Effort Calculation Variables
-  // We store raw points to do a sliding window check for best efforts
   const rawPoints: { time: number; dist: number }[] = [];
 
   // Iterate points
@@ -74,13 +85,39 @@ export const parseTcxFileContent = (xmlContent: string): ParsedActivityData => {
       }
     }
 
-    // 4. Elevation
+    // 4. Cadence (RunCadence or Cadence)
+    // RunCadence usually maxes at ~200 (steps per min). Bike Cadence maxes ~120 (rpm).
+    // Garmin often uses RunCadence which is steps/min divided by 2 sometimes, or full steps.
+    // Standard TCX schema often puts it in <Extensions><TPX><RunCadence>
+    let cad = 0;
+    const runCadenceNode = point.querySelector("RunCadence");
+    const cadenceNode = point.querySelector("Cadence"); // sometimes used for cycling or generic
+    
+    if (runCadenceNode) {
+       cad = parseInt(runCadenceNode.textContent || "0");
+       // Sometimes RunCadence is steps per minute (spm) or full cycles. We assume SPM.
+    } else if (cadenceNode) {
+       cad = parseInt(cadenceNode.textContent || "0");
+       // Often for running this might be RPM (one foot), so * 2 might be needed, but let's stick to raw.
+    }
+
+    if (cad > 0) {
+      cadenceSum += cad;
+      cadenceCount++;
+      currentSplitCadenceSum += cad;
+      currentSplitCadenceCount++;
+    }
+
+    // 5. Elevation
     const altNode = point.querySelector("AltitudeMeters");
     let alt = 0;
     if (altNode) {
       alt = parseFloat(altNode.textContent || "0");
       if (lastAltitude !== -9999 && alt > lastAltitude) {
-        elevationGain += (alt - lastAltitude);
+         // Simple filter for noise: only count if > 0.2m change
+         if ((alt - lastAltitude) > 0.2) {
+            elevationGain += (alt - lastAltitude);
+         }
       }
       lastAltitude = alt;
     }
@@ -88,56 +125,45 @@ export const parseTcxFileContent = (xmlContent: string): ParsedActivityData => {
     // Store raw point for best efforts
     rawPoints.push({ time: timestamp, dist });
 
-    // 5. Sampling for charts
+    // 6. Sampling for charts
     if (index % sampleRate === 0 || index === trackpoints.length - 1) {
-       // Calculate instant pace (very rough estimate based on previous sampled point)
-       let pace = 0;
-       if (seriesSample.length > 0) {
-         const prev = seriesSample[seriesSample.length - 1];
-         const dDist = dist - prev.dist;
-         // dTime needs to be calculated from raw point index, but we can approximate using the timestamps if we tracked them in DataPoint
-         // For simplicity, let's assume sampleRate is uniform enough or just use 0 for first point
-       }
-       seriesSample.push({ dist, ele: alt, hr, pace: 0 }); // Placeholder pace, calculation is noisy on raw GPS
+       seriesSample.push({ dist, ele: alt, hr, pace: 0, cadence: cad }); 
     }
 
-    // 6. Split Logic (Every 1000m)
+    // 7. Split Logic (Every 1000m)
     if (totalDistance >= splitIndex * 1000) {
       const splitDuration = (timestamp - currentSplitStartTime) / 1000; // seconds
       const splitAvgHr = currentSplitHrCount > 0 ? Math.round(currentSplitHrSum / currentSplitHrCount) : 0;
+      const splitAvgCadence = currentSplitCadenceCount > 0 ? Math.round(currentSplitCadenceSum / currentSplitCadenceCount) : 0;
+      const splitDist = totalDistance - lastSplitDistance; // Should be ~1000
       
+      // Calculate pace for split
+      const splitPace = splitDuration / (splitDist / 1000);
+
       splits.push({
         kilometer: splitIndex,
         timeSeconds: splitDuration,
-        avgHr: splitAvgHr
+        avgHr: splitAvgHr,
+        avgPaceSeconds: splitPace,
+        avgCadence: splitAvgCadence
       });
 
       splitIndex++;
+      lastSplitDistance = totalDistance;
       currentSplitStartTime = timestamp;
       currentSplitHrSum = 0;
       currentSplitHrCount = 0;
+      currentSplitCadenceSum = 0;
+      currentSplitCadenceCount = 0;
     }
   });
 
-  // Post-Process: Calculate Pace for Series (Smoothing)
-  for (let i = 1; i < seriesSample.length; i++) {
-     const dDist = seriesSample[i].dist - seriesSample[i-1].dist;
-     // We need time difference. Since we didn't store time in DataPoint to save space, 
-     // we can estimate based on total duration / points, BUT better to just leave it 0 if we can't be accurate.
-     // To fix this properly for the graph:
-     // Let's assume uniform time distribution for the graph x-axis if we plot by index, 
-     // but plotting by distance is better.
-     // Let's just store pace as 0 for now in this restricted parser to avoid complexity errors without time tracking in DataPoint.
-     // Actually, let's calculate pace from splits for the graph? No, splits are too coarse.
-  }
-
   const totalDurationSeconds = (endTime - startTime) / 1000;
   const avgHr = heartRateCount > 0 ? Math.round(heartRateSum / heartRateCount) : 0;
+  const avgCadence = cadenceCount > 0 ? Math.round(cadenceSum / cadenceCount) : undefined;
   const avgPaceSecondsPerKm = totalDistance > 0 ? (totalDurationSeconds / (totalDistance / 1000)) : 0;
 
   // Calculate Training Load (TRIMP-ish)
-  // Simple formula: Duration (mins) * Avg HR / Max HR (assumed generic 190 if not passed, but we use internal max)
-  // This produces a "Score" relative to effort.
   const safeMaxHr = maxHr > 0 ? maxHr : 190;
   const trainingLoadScore = Math.round((totalDurationSeconds / 60) * (avgHr / safeMaxHr) * 10); 
 
@@ -148,12 +174,10 @@ export const parseTcxFileContent = (xmlContent: string): ParsedActivityData => {
   targets.forEach(targetDist => {
     if (totalDistance >= targetDist) {
       let bestTime = Infinity;
-      // Sliding window
       let left = 0;
       for (let right = 0; right < rawPoints.length; right++) {
         const d = rawPoints[right].dist - rawPoints[left].dist;
         if (d >= targetDist) {
-          // Shrink window from left until just under targetDist
           while (rawPoints[right].dist - rawPoints[left + 1].dist >= targetDist) {
             left++;
           }
@@ -176,9 +200,11 @@ export const parseTcxFileContent = (xmlContent: string): ParsedActivityData => {
     totalDurationSeconds: totalDurationSeconds,
     avgHr,
     maxHr,
+    avgCadence,
     elevationGain,
     avgPaceSecondsPerKm,
     trainingLoadScore,
+    totalCalories,
     splits,
     bestEfforts,
     seriesSample
