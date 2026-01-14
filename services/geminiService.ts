@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { AthleteProfile, AnalysisType, TrainingPlan } from "../types";
+import { AthleteProfile, AnalysisType, TrainingPlan, ExtendedAnalysis } from "../types";
 import { parseTcxFileContent, formatDuration, formatPace } from "./tcxParser";
 
 // Initialize Gemini Client
@@ -72,39 +72,52 @@ const getKarvonenContext = (profile: AthleteProfile): string => {
  * The Master System Prompt for the AI Coach Layer
  */
 const COACHING_SYSTEM_PROMPT = `
-You are the AI coaching layer of a local-first running coach application called “Run Boy Run”.
-
-Your role is NOT to calculate metrics.
-Your role is to INTERPRET, CONNECT, and EXPLAIN decisions made by deterministic code.
-
-You must think like an experienced endurance running coach.
+You are the Senior Sports Scientist and Head Coach of "Run Boy Run".
+Your analysis must be deeper than a standard fitness app. You don't just report numbers; you calculate efficiency, estimate strain, and judge quality.
 
 ==================================================
-CORE PHILOSOPHY
+ANALYSIS PHILOSOPHY
 ==================================================
-1. Training is a continuous system, not isolated workouts.
-2. Morning readiness affects today’s execution, not long-term structure.
-3. The training plan defines intent; daily context defines adjustment.
-4. Consistency and recovery matter more than hero workouts.
-5. All recommendations must be conservative, explainable, and practical.
-
-==================================================
-HARD RULES (NON-NEGOTIABLE)
-==================================================
-- You MUST NOT change distances, volume, or workout structure.
-- You MUST NOT invent or recalculate metrics.
-- You MUST NOT override recovery or safety decisions made by code.
-- You MUST NOT use medical or diagnostic language.
-- You MUST treat all biometric interpretation as ESTIMATED and CONTEXTUAL.
-- You MUST be aware of the TEMPORAL CONTEXT (Date/Time). If a screenshot date conflicts with System Time, point it out.
+1. **Holistic View**: Use every data point (Cadence, Elevation, HR Drift) to build a picture of the athlete's biology.
+2. **Quality over Quantity**: A short run with perfect execution is better than a long junk mile run. Score accordingly.
+3. **Form Inference**: Use Cadence and Pace to infer stride efficiency. (e.g., Low cadence + Fast pace = High impact forces).
+4. **Recovery Science**: Estimate recovery time based on intensity (HR zones) and duration.
 
 ==================================================
 IDENTITY & VOICE
 ==================================================
-- Calm, experienced endurance coach.
-- Practical, not hype-driven.
-- Supportive, not authoritarian.
+- Professional, insightful, precise.
+- You explain *why* something happened. (e.g., "Your HR spiked at km 4 likely due to the elevation gain combined with a cadence drop.")
 `;
+
+// Define the ExtendedAnalysis Schema for Gemini
+const extendedAnalysisSchema = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING, description: "A creative, short summary title for the workout" },
+    summary: { type: Type.STRING, description: "Executive summary of the session performance" },
+    effortScore: { type: Type.INTEGER, description: "RPE 1-10" },
+    qualityScore: { type: Type.INTEGER, description: "0-100 Score based on execution vs implied goal" },
+    trainingEffect: { type: Type.STRING, description: "e.g., Base, Tempo, VO2 Max, Recovery" },
+    recoveryTimeHours: { type: Type.INTEGER, description: "Estimated hours until fully recovered" },
+    hydrationEstimateMl: { type: Type.INTEGER, description: "Estimated fluid loss in ml" },
+    keyStrengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+    areasForImprovement: { type: Type.ARRAY, items: { type: Type.STRING } },
+    formAnalysis: { type: Type.STRING, description: "Analysis of cadence, stride, and efficiency" },
+    pacingAnalysis: { type: Type.STRING, description: "Analysis of splits and consistency" },
+    coachFeedback: { type: Type.STRING, description: "Overall feedback text" },
+    nextWorkoutSuggestion: { type: Type.STRING, description: "Specific recommendation for next session" },
+    // Data extraction fields (for screenshots)
+    extractedDistance: { type: Type.STRING },
+    extractedDuration: { type: Type.STRING },
+    extractedPace: { type: Type.STRING },
+    extractedHr: { type: Type.INTEGER },
+    extractedCadence: { type: Type.INTEGER },
+    extractedElevation: { type: Type.INTEGER },
+    extractedCalories: { type: Type.INTEGER },
+  },
+  required: ["title", "summary", "effortScore", "qualityScore", "trainingEffect", "recoveryTimeHours", "hydrationEstimateMl", "keyStrengths", "areasForImprovement", "formAnalysis", "pacingAnalysis", "coachFeedback", "nextWorkoutSuggestion"]
+};
 
 export const analyzeVitals = async (
   files: File[], 
@@ -113,69 +126,31 @@ export const analyzeVitals = async (
   recentHistoryContext?: string,
   previousReadinessContext?: string
 ) => {
-  // Convert all files to generative parts
   const imageParts = await Promise.all(files.map(f => fileToGenerativePart(f)));
   const context = getKarvonenContext(profile);
   const temporalContext = getCurrentTemporalContext();
   
-  let planContext = "";
-  if (todaysPlannedWorkout) {
-    planContext = `
-      CONTEXT - SCHEDULED WORKOUT: "${todaysPlannedWorkout}"
-    `;
-  } else {
-    planContext = "CONTEXT - SCHEDULED WORKOUT: None / Rest / Unscheduled";
-  }
-
-  const historyContextString = recentHistoryContext ? `
-    CONTEXT - RECENT TRAINING HISTORY (Last 5 Days):
-    ${recentHistoryContext}
-    
-    *Use this history to distinguish between acute training fatigue (expected) and sickness/burnout (unexpected).*
-  ` : "CONTEXT - RECENT TRAINING HISTORY: None available.";
-
-  const readinessContextString = previousReadinessContext ? `
-    CONTEXT - PREVIOUS READINESS DATA (Last Scan):
-    ${previousReadinessContext}
-    
-    *Compare today's data with this previous data to identify trends (e.g., declining HRV, rising RHR).*
-  ` : "CONTEXT - PREVIOUS READINESS DATA: None available.";
+  let planContext = todaysPlannedWorkout ? `CONTEXT - SCHEDULED WORKOUT: "${todaysPlannedWorkout}"` : "CONTEXT - SCHEDULED WORKOUT: None / Rest / Unscheduled";
+  const historyContextString = recentHistoryContext || "None available.";
+  const readinessContextString = previousReadinessContext || "None available.";
 
   const prompt = `
     ${COACHING_SYSTEM_PROMPT}
-
-    TASK: MORNING DECISION (BEFORE RUN)
-    
-    Analyze these images of morning vitals (HRV, RHR, Sleep, etc.).
+    TASK: MORNING READINESS SCAN
+    Analyze these vitals.
     
     ${temporalContext}
-    
-    ATHLETE CONTEXT:
-    ${context}
-    ${planContext}
-    ${historyContextString}
-    ${readinessContextString}
+    ATHLETE: ${context}
+    PLAN: ${planContext}
+    HISTORY: ${historyContextString}
+    PREVIOUS: ${readinessContextString}
 
-    Apply the "MORNING DECISION" responsibility:
-    - Does today’s readiness SUPPORT the planned intent?
-    - Should the runner PROTECT the session (reduce intensity, keep distance) or EXECUTE as planned?
-    - Check timestamps in images against System Time. If data is old (e.g. from yesterday), warn the user in the recommendation.
-    
-    Note: You may recommend holding the run strictly in Zone 2 or focusing on form, but DO NOT cancel the workout unless it is already a rest day.
-
-    Based on the visible data across all images and the athlete's specific goals and history:
-    1. Determine a readiness score (0-100).
-    2. Determine the training status (Recovery, Maintenance, Ready to Train, Peak).
-    3. Construct the JSON output carefully:
-       - "summary": Combine "Today's Context" (Readiness + Plan) and "Why It Matters" (Big picture implication).
-       - "recommendation": Combine "What to Do Today" (Execution cues) and "Coach's Note" (Supportive closing).
+    Assess readiness (0-100) and provide a recommendation.
   `;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: {
-      parts: [...imageParts, { text: prompt }]
-    },
+    contents: { parts: [...imageParts, { text: prompt }] },
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -195,71 +170,56 @@ export const analyzeVitals = async (
 };
 
 export const analyzeWorkoutImage = async (files: File[], profile: AthleteProfile, readinessContext?: string, recentHistoryContext?: string) => {
-  // Convert all files to generative parts
   const imageParts = await Promise.all(files.map(f => fileToGenerativePart(f)));
   const context = getKarvonenContext(profile);
   const temporalContext = getCurrentTemporalContext();
-
-  const historyContextString = recentHistoryContext ? `
-    CONTEXT - RECENT TRAINING HISTORY (Last 5 Days):
-    ${recentHistoryContext}
-    
-    *Use this to judge if today's performance is consistent, a breakthrough, or a sign of fatigue based on recent load.*
-  ` : "CONTEXT - RECENT TRAINING HISTORY: None available.";
+  const historyContextString = recentHistoryContext || "None available.";
 
   const prompt = `
     ${COACHING_SYSTEM_PROMPT}
 
-    TASK: POST-RUN INTEGRATION (Image Analysis)
-    Analyze these workout screenshots (Strava/Apple Watch/Garmin/TrainingPeaks).
+    TASK: DEEP DIVE WORKOUT ANALYSIS (From Screenshots)
+    Analyze these workout screenshots (Strava/Apple/Garmin).
     
     ${temporalContext}
+    ATHLETE: ${context}
+    READINESS: ${readinessContext || "Unknown"}
+    HISTORY: ${historyContextString}
 
-    ATHLETE CONTEXT:
-    ${context}
-    ${readinessContext || "Readiness Context: Unknown"}
-    ${historyContextString}
+    1. **Data Extraction**: Extract EVERY visible number. Distance, Time, Pace, HR, Cadence (SPM), Elevation, Calories, Zones.
+    2. **Inference**: If Cadence isn't visible, infer it from the description or typical values for this pace/profile (mark as estimated).
+    3. **Deep Analysis**: Fill out the Extended Analysis schema. Calculate efficiency based on available metrics.
 
-    1. Extract key metrics if visible (Total Distance, Total Time, Avg Pace, Avg HR). Prioritize the most accurate summary data found.
-    
-    Apply the "POST-RUN INTEGRATION" responsibility:
-    - Connect what just happened to the big picture.
-    - If metrics are visible, use them to explain (do not invent).
-    - If performance exceeded expectations: Praise restraint.
-    - If performance underwhelmed: Normalize it, emphasize adaptation.
-
-    Construct the JSON output:
-    - "aiCoachFeedback": Combine "Today's Context" (How it fit the plan) and "Why It Matters" (Impact on fitness/recovery).
-    - "nextWorkoutSuggestion": Combine "What to Do Next" (Recovery/Focus) and "Coach's Note" (Supportive closing).
+    Output the full extended analysis object.
   `;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: {
-      parts: [...imageParts, { text: prompt }]
-    },
+    contents: { parts: [...imageParts, { text: prompt }] },
     config: {
       responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          distance: { type: Type.STRING },
-          duration: { type: Type.STRING },
-          avgPace: { type: Type.STRING },
-          avgHr: { type: Type.INTEGER },
-          aiCoachFeedback: { type: Type.STRING },
-          nextWorkoutSuggestion: { type: Type.STRING },
-        },
-        required: ["aiCoachFeedback", "nextWorkoutSuggestion"]
-      }
+      responseSchema: extendedAnalysisSchema
     }
   });
 
-  return JSON.parse(response.text || '{}');
+  const result = JSON.parse(response.text || '{}');
+
+  return {
+    distance: result.extractedDistance,
+    duration: result.extractedDuration,
+    avgPace: result.extractedPace,
+    avgHr: result.extractedHr,
+    avgCadence: result.extractedCadence,
+    elevationGain: result.extractedElevation,
+    calories: result.extractedCalories,
+    aiCoachFeedback: result.coachFeedback, // Legacy mapping
+    nextWorkoutSuggestion: result.nextWorkoutSuggestion, // Legacy mapping
+    extendedAnalysis: result
+  };
 };
 
 export const analyzeTcxFile = async (file: File, profile: AthleteProfile, readinessContext?: string, recentHistoryContext?: string) => {
-  // 1. DETERMINISTIC PARSING (Code Only)
+  // 1. DETERMINISTIC PARSING
   const text = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => resolve(e.target?.result as string);
@@ -269,83 +229,75 @@ export const analyzeTcxFile = async (file: File, profile: AthleteProfile, readin
 
   const parsedData = parseTcxFileContent(text);
   const temporalContext = getCurrentTemporalContext();
-
-  // 2. AI COACHING (Uses Parsed Data)
   const context = getKarvonenContext(profile);
-
-  const historyContextString = recentHistoryContext ? `
-    CONTEXT - RECENT TRAINING HISTORY (Last 5 Days):
-    ${recentHistoryContext}
-    
-    *Use this to judge if today's performance is consistent, a breakthrough, or a sign of fatigue based on recent load.*
-  ` : "CONTEXT - RECENT TRAINING HISTORY: None available.";
+  const historyContextString = recentHistoryContext || "None available.";
   
-  // Create a clean JSON summary for the AI
+  // 2. PREPARE DEEP SUMMARY FOR AI
   const runSummary = {
-    totalDistanceKm: (parsedData.totalDistanceMeters / 1000).toFixed(2),
-    duration: formatDuration(parsedData.totalDurationSeconds),
-    avgPace: formatPace(parsedData.avgPaceSecondsPerKm),
-    avgHr: parsedData.avgHr,
-    maxHr: parsedData.maxHr,
-    elevationGain: parsedData.elevationGain,
-    splits: parsedData.splits.map(s => `Km ${s.kilometer}: ${formatDuration(s.timeSeconds)} (${s.avgHr}bpm)`).join('\n')
+    metrics: {
+        distance: (parsedData.totalDistanceMeters / 1000).toFixed(2) + " km",
+        duration: formatDuration(parsedData.totalDurationSeconds),
+        avgPace: formatPace(parsedData.avgPaceSecondsPerKm),
+        avgHr: parsedData.avgHr,
+        maxHr: parsedData.maxHr,
+        elevationGain: parsedData.elevationGain,
+        avgCadence: parsedData.avgCadence,
+        calories: parsedData.totalCalories
+    },
+    splits: parsedData.splits.map(s => 
+        `Km ${s.kilometer}: ${formatDuration(s.timeSeconds)} | HR: ${s.avgHr} | Cadence: ${s.avgCadence || 'N/A'}`
+    ).join('\n')
   };
 
   const prompt = `
     ${COACHING_SYSTEM_PROMPT}
 
-    TASK: POST-RUN INTEGRATION (TCX Analysis)
-    I have mathematically parsed a TCX file. INTERPRET this data.
+    TASK: DEEP DIVE WORKOUT ANALYSIS (From Parsed TCX Data)
+    I have parsed the raw GPS/XML file. Analyze this biological data deeply.
     
     ${temporalContext}
 
-    RUN DATA:
+    RAW DATA SUMMARY:
     ${JSON.stringify(runSummary, null, 2)}
     
-    ATHLETE CONTEXT:
-    ${context}
-    ${readinessContext || "Readiness Context: Unknown"}
-    ${historyContextString}
+    ATHLETE: ${context}
+    READINESS: ${readinessContext || "Unknown"}
+    HISTORY: ${historyContextString}
 
-    Apply the "POST-RUN INTEGRATION" responsibility:
-    - Connect the splits and HR drift to the big picture.
-    - Did they support fitness, recovery, or consistency?
-    - If performance exceeded expectations: Praise restraint.
-    - If performance underwhelmed: Normalize it, emphasize adaptation.
+    Perform the analysis:
+    - **Form**: Look at Cadence vs Pace in the splits. Is it low (<165)? Is it consistent?
+    - **Pacing**: Look at the split times. Positive or negative split?
+    - **Cardiac Drift**: Look at HR in later splits compared to pace.
+    - **Load**: Calculate the implied physiological cost.
 
-    Construct the JSON output:
-    - "aiCoachFeedback": Combine "Today's Context" (How it fit the plan) and "Why It Matters" (Impact on fitness/recovery).
-    - "nextWorkoutSuggestion": Combine "What to Do Next" (Recovery/Focus) and "Coach's Note" (Supportive closing).
+    Generate the Extended Analysis JSON.
   `;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: {
-      parts: [{ text: prompt }]
-    },
+    contents: { parts: [{ text: prompt }] },
     config: {
       responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          aiCoachFeedback: { type: Type.STRING },
-          nextWorkoutSuggestion: { type: Type.STRING },
-        },
-        required: ["aiCoachFeedback", "nextWorkoutSuggestion"]
-      }
+      responseSchema: extendedAnalysisSchema
     }
   });
 
   const aiResult = JSON.parse(response.text || '{}');
 
-  // Merge Deterministic Data with AI Insights
   return {
-    ...aiResult,
     distance: `${(parsedData.totalDistanceMeters / 1000).toFixed(2)} km`,
     duration: formatDuration(parsedData.totalDurationSeconds),
     avgPace: formatPace(parsedData.avgPaceSecondsPerKm),
     avgHr: parsedData.avgHr,
-    parsedData: parsedData // Pass the full object for UI visualization
+    avgCadence: parsedData.avgCadence,
+    calories: parsedData.totalCalories,
+    elevationGain: parsedData.elevationGain,
+    
+    parsedData: parsedData,
+    
+    aiCoachFeedback: aiResult.coachFeedback, // Legacy
+    nextWorkoutSuggestion: aiResult.nextWorkoutSuggestion, // Legacy
+    extendedAnalysis: aiResult // New Rich Data
   };
 };
 
@@ -353,6 +305,7 @@ export const generateTrainingPlan = async (
   profile: AthleteProfile, 
   preferences: { longRunDay: string; workoutDay: string; notes: string }
 ): Promise<TrainingPlan> => {
+    // Keep existing plan generation logic...
   const context = getKarvonenContext(profile);
   const temporalContext = getCurrentTemporalContext();
   
@@ -372,15 +325,7 @@ export const generateTrainingPlan = async (
     - Preferred Workout/Interval Day: ${preferences.workoutDay}
     - Specific Notes/Requests: "${preferences.notes}"
 
-    RULES:
-    - The plan should be specific, progressive, and geared towards their goal: "${profile.runningGoal}".
-    - Respect the preferred days where possible.
-    - Ensure consistency and recovery matter more than hero workouts.
-    
-    Output a JSON object with:
-    - goal: String summary of the plan's focus
-    - durationWeeks: 4
-    - schedule: An array of workouts.
+    Output a JSON object with goal, durationWeeks, and schedule.
   `;
 
   const response = await ai.models.generateContent({
@@ -418,10 +363,9 @@ export const generateTrainingPlan = async (
 
   const result = JSON.parse(response.text || '{}');
   
-  // Calculate Start Date (Most recent Monday)
   const now = new Date();
-  const day = now.getDay() || 7; // 1-7 (Mon-Sun)
-  if (day !== 1) now.setHours(-24 * (day - 1)); // Go back to Monday
+  const day = now.getDay() || 7; 
+  if (day !== 1) now.setHours(-24 * (day - 1));
   now.setHours(0, 0, 0, 0);
 
   return {
