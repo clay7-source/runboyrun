@@ -1030,23 +1030,32 @@ const App: React.FC = () => {
                   </div>
 
                   {/* Scores */}
-                  <div className="grid grid-cols-2 gap-6 mb-6">
+                  <div className="grid grid-cols-3 gap-3 mb-6">
                       <div>
                           <div className="flex justify-between items-center mb-1">
-                             <span className="text-xs font-bold text-white/60 uppercase">Quality</span>
-                             <span className="text-xs font-bold text-green-400">{deepAnalysis.qualityScore}%</span>
+                             <span className="text-[10px] font-bold text-white/60 uppercase">Quality</span>
+                             <span className="text-[10px] font-bold text-green-400">{deepAnalysis.qualityScore}%</span>
                           </div>
-                          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                              <div className="h-full bg-gradient-to-r from-green-500 to-emerald-400" style={{width: `${deepAnalysis.qualityScore}%`}}></div>
                           </div>
                       </div>
                       <div>
                           <div className="flex justify-between items-center mb-1">
-                             <span className="text-xs font-bold text-white/60 uppercase">RPE (Effort)</span>
-                             <span className="text-xs font-bold text-yellow-400">{deepAnalysis.effortScore}/10</span>
+                             <span className="text-[10px] font-bold text-white/60 uppercase">RPE</span>
+                             <span className="text-[10px] font-bold text-yellow-400">{deepAnalysis.effortScore}/10</span>
                           </div>
-                          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                              <div className="h-full bg-gradient-to-r from-yellow-500 to-red-500" style={{width: `${deepAnalysis.effortScore * 10}%`}}></div>
+                          </div>
+                      </div>
+                      <div>
+                          <div className="flex justify-between items-center mb-1">
+                             <span className="text-[10px] font-bold text-white/60 uppercase">VO2 Max</span>
+                             <span className="text-[10px] font-bold text-purple-400">{deepAnalysis.vo2MaxEstimate || '-'}</span>
+                          </div>
+                          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                             <div className="h-full bg-gradient-to-r from-purple-500 to-purple-400" style={{width: `${Math.min(100, (deepAnalysis.vo2MaxEstimate || 0))}%`}}></div>
                           </div>
                       </div>
                   </div>
