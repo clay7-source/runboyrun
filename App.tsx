@@ -600,22 +600,85 @@ const App: React.FC = () => {
 
                <div className="space-y-4">
                   {plan.schedule.map((workout, idx) => {
+                     const workoutDate = getPlanDate(plan.startDate, workout.week, workout.day);
+                     // Find if there is a completed run on this date
+                     const completedRun = history.find(h => {
+                         const hDate = new Date(h.timestamp);
+                         return hDate.getDate() === workoutDate.getDate() && 
+                                hDate.getMonth() === workoutDate.getMonth() && 
+                                hDate.getFullYear() === workoutDate.getFullYear();
+                     });
+
+                     const isPast = workoutDate < new Date() && !completedRun;
+                     const isToday = new Date().toDateString() === workoutDate.toDateString();
+
                      return (
                         <div key={idx} className="flex gap-4 group">
                            <div className="flex flex-col items-center">
-                              <div className={`w-2 h-2 rounded-full mt-2 bg-white/20 group-hover:bg-white/40`}></div>
-                              <div className="w-[1px] bg-white/10 flex-1 my-1"></div>
+                              <div className={`w-2 h-2 rounded-full mt-2 transition-colors ${completedRun ? 'bg-green-500' : (isPast ? 'bg-red-500/50' : 'bg-white/20')}`}></div>
+                              <div className={`w-[1px] flex-1 my-1 ${completedRun ? 'bg-green-500/50' : 'bg-white/10'}`}></div>
                            </div>
                            <div className="pb-6 flex-1">
-                              <div className="text-[10px] font-bold uppercase text-white/30 mb-1">Week {workout.week} • Day {workout.day}</div>
-                              <div className="bg-white/5 border border-white/5 rounded-xl p-4 hover:bg-white/10 transition-colors">
+                              <div className="flex justify-between items-center mb-1">
+                                <div className="text-[10px] font-bold uppercase text-white/30">
+                                   Week {workout.week} • {workoutDate.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
+                                </div>
+                                {completedRun && <span className="text-[10px] font-bold text-green-400 bg-green-900/20 px-2 py-0.5 rounded-full border border-green-500/20">Completed</span>}
+                                {isPast && !completedRun && <span className="text-[10px] font-bold text-red-400 bg-red-900/20 px-2 py-0.5 rounded-full border border-red-500/20">Missed</span>}
+                              </div>
+                              
+                              <div className={`rounded-xl p-4 transition-colors border ${completedRun ? 'bg-green-500/5 border-green-500/20' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}>
                                  <div className="flex justify-between items-start mb-2">
-                                    <h4 className="font-bold text-white text-sm">{workout.title}</h4>
-                                    <span className={`text-[10px] px-2 py-1 rounded-full bg-${settings.themeColor}-500/10 text-${settings.themeColor}-400 border border-${settings.themeColor}-500/20`}>{workout.type}</span>
+                                    <h4 className={`font-bold text-sm ${completedRun ? 'text-green-100' : 'text-white'}`}>{workout.title}</h4>
+                                    <span className={`text-[10px] px-2 py-1 rounded-full ${completedRun ? 'bg-green-500/20 text-green-300' : `bg-${settings.themeColor}-500/10 text-${settings.themeColor}-400 border border-${settings.themeColor}-500/20`}`}>{workout.type}</span>
                                  </div>
-                                 <p className="text-xs text-white/60 leading-relaxed">{workout.description}</p>
-                                 {workout.distanceKm && (
-                                    <div className="mt-2 text-xs font-mono text-white/40">{workout.distanceKm}km Target</div>
+                                 <p className="text-xs text-white/60 leading-relaxed mb-2">{workout.description}</p>
+                                 
+                                 {/* Planned Stats */}
+                                 {workout.distanceKm && !completedRun && (
+                                    <div className="text-xs font-mono text-white/40">{workout.distanceKm}km Target</div>
+                                 )}
+
+                                 {/* ACTUAL RUN DATA ATTACHMENT */}
+                                 {completedRun && (
+                                    <div className="mt-3 pt-3 border-t border-green-500/20">
+                                       <div className="flex items-center gap-2 mb-2">
+                                          <CheckCircle className="w-3 h-3 text-green-400" />
+                                          <span className="text-xs font-bold uppercase text-green-400">Workout Log</span>
+                                       </div>
+                                       
+                                       <div className="grid grid-cols-3 gap-2 mb-2">
+                                          <div className="bg-black/20 rounded-lg p-2 text-center">
+                                             <div className="text-[10px] text-white/40 uppercase">Dist</div>
+                                             <div className="text-sm font-bold text-white">{completedRun.distance || '-'}</div>
+                                          </div>
+                                          <div className="bg-black/20 rounded-lg p-2 text-center">
+                                             <div className="text-[10px] text-white/40 uppercase">Pace</div>
+                                             <div className="text-sm font-bold text-white">{completedRun.avgPace || '-'}</div>
+                                          </div>
+                                          <div className="bg-black/20 rounded-lg p-2 text-center">
+                                             <div className="text-[10px] text-white/40 uppercase">Quality</div>
+                                             <div className={`text-sm font-bold ${completedRun.extendedAnalysis?.qualityScore > 80 ? 'text-green-400' : 'text-yellow-400'}`}>
+                                                {completedRun.extendedAnalysis?.qualityScore || '-'}%
+                                             </div>
+                                          </div>
+                                       </div>
+
+                                       {completedRun.extendedAnalysis?.summary && (
+                                           <div className="relative pl-3 border-l-2 border-green-500/30 py-1">
+                                              <p className="text-xs text-green-100/70 italic leading-snug">
+                                                "{completedRun.extendedAnalysis.summary}"
+                                              </p>
+                                           </div>
+                                       )}
+                                       
+                                       <button 
+                                          onClick={() => { setViewingWorkout(completedRun); window.scrollTo(0,0); }}
+                                          className="mt-2 w-full text-center text-[10px] uppercase font-bold text-green-400/60 hover:text-green-400 transition-colors"
+                                       >
+                                          View Full Analysis
+                                       </button>
+                                    </div>
                                  )}
                               </div>
                            </div>
