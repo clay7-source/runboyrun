@@ -42,12 +42,16 @@ export const parseTcxFileContent = (xmlContent: string): ParsedActivityData => {
   let lastSplitDistance = 0;
   let splitIndex = 1;
 
-  // Sampling for charts (Target ~150 points)
-  const sampleRate = Math.max(1, Math.floor(trackpoints.length / 150));
+  // Sampling for charts (Target ~200 points)
+  const sampleRate = Math.max(1, Math.floor(trackpoints.length / 200));
   const seriesSample: DataPoint[] = [];
 
   // Best Effort Calculation Variables
   const rawPoints: { time: number; dist: number }[] = [];
+
+  // High Res HR Data (BPM -> Seconds)
+  const heartRateBuckets: Record<number, number> = {};
+  let lastTime = 0;
 
   // Iterate points
   trackpoints.forEach((point, index) => {
@@ -58,8 +62,13 @@ export const parseTcxFileContent = (xmlContent: string): ParsedActivityData => {
     if (index === 0) {
       startTime = timestamp;
       currentSplitStartTime = timestamp;
+      lastTime = timestamp;
     }
     endTime = timestamp;
+
+    // Time Delta for Bucket Calculation
+    const timeDeltaSeconds = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
 
     // 2. Distance
     const distNode = point.querySelector("DistanceMeters");
@@ -82,6 +91,11 @@ export const parseTcxFileContent = (xmlContent: string): ParsedActivityData => {
         
         currentSplitHrSum += hr;
         currentSplitHrCount++;
+
+        // Add to buckets (only if valid time delta)
+        if (timeDeltaSeconds > 0 && timeDeltaSeconds < 120) { // filter out pauses > 2 mins
+          heartRateBuckets[hr] = (heartRateBuckets[hr] || 0) + timeDeltaSeconds;
+        }
       }
     }
 
@@ -113,10 +127,11 @@ export const parseTcxFileContent = (xmlContent: string): ParsedActivityData => {
     let alt = 0;
     if (altNode) {
       alt = parseFloat(altNode.textContent || "0");
-      if (lastAltitude !== -9999 && alt > lastAltitude) {
-         // Simple filter for noise: only count if > 0.2m change
-         if ((alt - lastAltitude) > 0.2) {
-            elevationGain += (alt - lastAltitude);
+      if (lastAltitude !== -9999) {
+         // Simple filter for noise: only count if > 0.5m change to avoid micro-jitter
+         const diff = alt - lastAltitude;
+         if (diff > 0.5) {
+            elevationGain += diff;
          }
       }
       lastAltitude = alt;
@@ -207,7 +222,8 @@ export const parseTcxFileContent = (xmlContent: string): ParsedActivityData => {
     totalCalories,
     splits,
     bestEfforts,
-    seriesSample
+    seriesSample,
+    heartRateBuckets
   };
 };
 
