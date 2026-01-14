@@ -246,12 +246,33 @@ const App: React.FC = () => {
     return workout || null;
   };
 
+  // NEW: Generate recent history context for the AI
+  const getRecentHistoryContext = (): string => {
+    const now = Date.now();
+    const fiveDaysAgo = now - (5 * 24 * 60 * 60 * 1000);
+    // Filter workouts from last 5 days
+    const recentWorkouts = history
+      .filter(h => h.timestamp >= fiveDaysAgo)
+      .sort((a,b) => b.timestamp - a.timestamp); // Newest first
+
+    if (recentWorkouts.length === 0) return "No recorded workouts in the last 5 days.";
+
+    return recentWorkouts.map(w => {
+      const date = new Date(w.timestamp).toLocaleDateString();
+      const dist = w.distance || 'Unknown distance';
+      const pace = w.avgPace || 'Unknown pace';
+      // Truncate feedback to keep context small
+      const feedback = w.aiCoachFeedback ? w.aiCoachFeedback.substring(0, 100) + '...' : 'No feedback.';
+      return `- [${date}] ${w.type}: ${dist} @ ${pace}. Coach said: "${feedback}"`;
+    }).join('\n');
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: AnalysisType) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
     
     // Convert FileList to Array
-    const files = Array.from(fileList);
+    const files: File[] = Array.from(fileList);
 
     setIsLoading(true);
     setLoadingMessage(type === AnalysisType.VITALS ? 'Analyzing Biometrics...' : 'Analyzing Workout...');
@@ -261,9 +282,12 @@ const App: React.FC = () => {
       if (type === AnalysisType.VITALS) {
         const todaysWorkout = getTodaysScheduledWorkout();
         const workoutContext = todaysWorkout ? `${todaysWorkout.title}: ${todaysWorkout.description}` : undefined;
+        
+        // Pass history context so AI knows what happened yesterday
+        const historyContext = getRecentHistoryContext();
 
         // Pass array of files
-        const result = await analyzeVitals(files, profile, workoutContext);
+        const result = await analyzeVitals(files, profile, workoutContext, historyContext);
         const newReadiness = { ...result, lastUpdated: Date.now() };
         setReadiness(newReadiness);
         saveReadiness(newReadiness);
