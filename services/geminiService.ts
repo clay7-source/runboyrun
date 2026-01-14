@@ -119,6 +119,64 @@ const extendedAnalysisSchema = {
   required: ["title", "summary", "effortScore", "qualityScore", "trainingEffect", "recoveryTimeHours", "hydrationEstimateMl", "keyStrengths", "areasForImprovement", "formAnalysis", "pacingAnalysis", "coachFeedback", "nextWorkoutSuggestion"]
 };
 
+export const analyzeManualSleep = async (
+  sleepHours: number,
+  profile: AthleteProfile,
+  todaysPlannedWorkout?: string,
+  recentHistoryContext?: string,
+  previousReadinessContext?: string
+) => {
+  const context = getKarvonenContext(profile);
+  const temporalContext = getCurrentTemporalContext();
+  
+  let planContext = todaysPlannedWorkout ? `CONTEXT - SCHEDULED WORKOUT: "${todaysPlannedWorkout}"` : "CONTEXT - SCHEDULED WORKOUT: None / Rest / Unscheduled";
+  const historyContextString = recentHistoryContext || "None available.";
+  const readinessContextString = previousReadinessContext || "None available.";
+
+  const prompt = `
+    ${COACHING_SYSTEM_PROMPT}
+    TASK: MANUAL MORNING READINESS CHECK
+    The user has manually reported their sleep duration.
+    
+    INPUT:
+    - Reported Sleep Duration: ${sleepHours} hours
+    
+    ${temporalContext}
+    ATHLETE: ${context}
+    PLAN: ${planContext}
+    HISTORY: ${historyContextString}
+    PREVIOUS READINESS: ${readinessContextString}
+
+    Assess readiness (0-100) based primarily on the sleep duration, but considering the athlete's age, load, and scheduled workout.
+    - < 6 hours is generally detrimental.
+    - 7-8 hours is baseline.
+    - > 9 hours is excellent.
+    - Adjust if they are older or have high training load.
+    
+    Provide a score, status, summary, and recommendation.
+  `;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: { parts: [{ text: prompt }] },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          score: { type: Type.INTEGER },
+          status: { type: Type.STRING },
+          summary: { type: Type.STRING },
+          recommendation: { type: Type.STRING },
+        },
+        required: ["score", "status", "summary", "recommendation"]
+      }
+    }
+  });
+
+  return JSON.parse(response.text || '{}');
+};
+
 export const analyzeVitals = async (
   files: File[], 
   profile: AthleteProfile, 
