@@ -5,7 +5,7 @@ import { formatDuration, formatPace } from './services/tcxParser';
 import { saveProfile, loadProfile, saveReadiness, loadReadiness, saveHistory, loadHistory, saveSettings, loadSettings, savePlan, loadPlan, savePlanPrefs, loadPlanPrefs, saveUser, loadUser, createBackup, restoreBackup } from './services/storage';
 import { GlassCard } from './components/GlassCard';
 import { AthleteProfile as ProfileComponent } from './components/AthleteProfile';
-import { Activity, Battery, Upload, Zap, ChevronRight, FileCode, ImageIcon, Loader2, TrendingUp, Mountain, History, Calendar, MapPin, Play, Settings, List, X, BarChart, Medal, Flame, Trash2, PlusCircle, CheckCircle, Clock, Cloud, Download, LogOut, ShieldAlert, AlertTriangle, Droplets, Gauge, BrainCircuit, Footprints, ArrowUpRight, ArrowDownRight, Wind, User, BarChart2, MousePointerClick, Moon } from 'lucide-react';
+import { Activity, Battery, Upload, Zap, ChevronRight, FileCode, ImageIcon, Loader2, TrendingUp, Mountain, History, Calendar, MapPin, Play, Settings, List, X, BarChart, Medal, Flame, Trash2, PlusCircle, CheckCircle, Clock, Cloud, Download, LogOut, ShieldAlert, AlertTriangle, Droplets, Gauge, BrainCircuit, Footprints, ArrowUpRight, ArrowDownRight, Wind, User, BarChart2, MousePointerClick, Moon, Sofa } from 'lucide-react';
 
 const INITIAL_PROFILE: AthleteProfile = {
   name: '',
@@ -38,6 +38,9 @@ const App: React.FC = () => {
     workoutDay: 'Tuesday',
     notes: ''
   });
+  
+  // New: Start Date State
+  const [planStartDate, setPlanStartDate] = useState(new Date().toISOString().split('T')[0]);
   
   // Manual Vitals State
   const [isManualInputOpen, setIsManualInputOpen] = useState(false);
@@ -98,23 +101,7 @@ const App: React.FC = () => {
 
   // Auth & Backup Logic
   const handleGoogleLogin = () => {
-    setIsLoading(true);
-    setLoadingMessage("Connecting to Google...");
-    
-    // Simulate API delay
-    setTimeout(() => {
-      const mockUser: UserProfile = {
-        id: 'mock-google-id-123',
-        name: profile.name || 'Running Enthusiast',
-        email: 'runner@gmail.com',
-        avatarUrl: 'https://lh3.googleusercontent.com/a/default-user',
-        isAuthenticated: true
-      };
-      setUser(mockUser);
-      saveUser(mockUser);
-      setIsLoading(false);
-      setUploadError("Successfully signed in (Demo Mode)");
-    }, 1500);
+    alert("Google Sign-In requires backend configuration and is not available in this demo.");
   };
 
   const handleLogout = () => {
@@ -220,9 +207,14 @@ const App: React.FC = () => {
     }
 
     setIsLoading(true);
-    setLoadingMessage("Building your 4-week plan...");
+    setLoadingMessage("Building your complete schedule...");
     try {
-      const newPlan = await generateTrainingPlan(profile, planPrefs);
+      // Create timestamp from selected date string (YYYY-MM-DD)
+      // Append T00:00:00 to ensure local time interpretation or use component values
+      const [y, m, d] = planStartDate.split('-').map(Number);
+      const startTimestamp = new Date(y, m - 1, d).getTime();
+
+      const newPlan = await generateTrainingPlan(profile, planPrefs, startTimestamp);
       setPlan(newPlan);
       savePlan(newPlan);
     } catch (e: any) {
@@ -240,9 +232,11 @@ const App: React.FC = () => {
     }
   };
 
-  const getPlanDate = (startDate: number, week: number, day: number) => {
+  // Improved Date Calculation:
+  // Instead of relying on (Week * 7), we iterate day by day from start date
+  const getPlanDate = (startDate: number, scheduleIndex: number) => {
     const date = new Date(startDate);
-    date.setDate(date.getDate() + (week - 1) * 7 + (day - 1));
+    date.setDate(date.getDate() + scheduleIndex);
     return date;
   };
 
@@ -258,12 +252,20 @@ const App: React.FC = () => {
   const getTodaysScheduledWorkout = (): ScheduledWorkout | null => {
     if (!plan) return null;
     const now = new Date();
-    // Find workout that matches today's date
-    const workout = plan.schedule.find(s => {
-      const date = getPlanDate(plan.startDate, s.week, s.day);
-      return date.getDate() === now.getDate() && date.getMonth() === now.getMonth();
+    // Because plan.schedule is now a flat array of days in order (hopefully) or we assume logic
+    // We map the schedule to dates
+    const scheduleWithDates = plan.schedule.map((s, idx) => ({ ...s, date: getPlanDate(plan.startDate, idx) }));
+    
+    const workout = scheduleWithDates.find(s => {
+      return s.date.getDate() === now.getDate() && 
+             s.date.getMonth() === now.getMonth() &&
+             s.date.getFullYear() === now.getFullYear();
     });
-    return workout || null;
+    
+    if (workout && workout.type !== 'Rest') {
+        return workout;
+    }
+    return null;
   };
 
   // Check if readiness data is from today
@@ -623,10 +625,19 @@ const App: React.FC = () => {
           {!plan ? (
             <div className="space-y-4">
               <p className="text-sm text-white/60">
-                Configure your weekly preferences and let the AI build a personalized 4-week block for you.
+                Configure your weekly preferences and let the AI build a complete 4-week daily schedule for you.
               </p>
               
               <div className="space-y-3">
+                 <div>
+                    <label className="text-xs uppercase text-white/40 font-bold mb-1 block">Plan Start Date</label>
+                    <input 
+                      type="date"
+                      value={planStartDate}
+                      onChange={(e) => setPlanStartDate(e.target.value)}
+                      className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                    />
+                 </div>
                  <div>
                     <label className="text-xs uppercase text-white/40 font-bold mb-1 block">Long Run Day</label>
                     <select 
@@ -672,7 +683,7 @@ const App: React.FC = () => {
                   <div className="flex justify-between items-start mb-2">
                      <div>
                         <h3 className="text-lg font-bold text-white">{plan.goal}</h3>
-                        <p className="text-xs text-white/50">{plan.durationWeeks} Week Block</p>
+                        <p className="text-xs text-white/50">{plan.durationWeeks} Week Block • Starts {new Date(plan.startDate).toLocaleDateString()}</p>
                      </div>
                      <button 
                         type="button"
@@ -691,7 +702,9 @@ const App: React.FC = () => {
 
                <div className="space-y-4">
                   {plan.schedule.map((workout, idx) => {
-                     const workoutDate = getPlanDate(plan.startDate, workout.week, workout.day);
+                     // Get precise date based on index from start date
+                     const workoutDate = getPlanDate(plan.startDate, idx);
+                     
                      // Find if there is a completed run on this date
                      const completedRun = history.find(h => {
                          const hDate = new Date(h.timestamp);
@@ -701,33 +714,58 @@ const App: React.FC = () => {
                      });
 
                      const isPast = workoutDate < new Date() && !completedRun;
+                     const isRest = workout.type === 'Rest';
                      const isToday = new Date().toDateString() === workoutDate.toDateString();
 
                      return (
-                        <div key={idx} className="flex gap-4 group">
-                           <div className="flex flex-col items-center">
-                              <div className={`w-2 h-2 rounded-full mt-2 transition-colors ${completedRun ? 'bg-green-500' : (isPast ? 'bg-red-500/50' : 'bg-white/20')}`}></div>
-                              <div className={`w-[1px] flex-1 my-1 ${completedRun ? 'bg-green-500/50' : 'bg-white/10'}`}></div>
+                        <div key={idx} className={`flex gap-4 group ${isRest ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}>
+                           <div className="flex flex-col items-center pt-1">
+                               <div className="w-10 text-center">
+                                   <div className={`text-[10px] font-bold uppercase ${isToday ? `text-${settings.themeColor}-400` : 'text-white/40'}`}>
+                                       {workoutDate.toLocaleDateString(undefined, {weekday: 'short'})}
+                                   </div>
+                                   <div className={`text-lg font-bold ${isToday ? `text-${settings.themeColor}-500` : 'text-white'}`}>
+                                       {workoutDate.getDate()}
+                                   </div>
+                               </div>
+                               <div className={`w-[1px] flex-1 my-2 ${completedRun ? 'bg-green-500/30' : 'bg-white/5'}`}></div>
                            </div>
-                           <div className="pb-6 flex-1">
-                              <div className="flex justify-between items-center mb-1">
-                                <div className="text-[10px] font-bold uppercase text-white/30">
-                                   Week {workout.week} • {workoutDate.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}
-                                </div>
-                                {completedRun && <span className="text-[10px] font-bold text-green-400 bg-green-900/20 px-2 py-0.5 rounded-full border border-green-500/20">Completed</span>}
-                                {isPast && !completedRun && <span className="text-[10px] font-bold text-red-400 bg-red-900/20 px-2 py-0.5 rounded-full border border-red-500/20">Missed</span>}
+                           
+                           <div className="pb-4 flex-1">
+                              {/* Status Badges */}
+                              <div className="flex items-center gap-2 mb-2">
+                                {isToday && <span className={`text-[9px] font-bold bg-${settings.themeColor}-500 text-white px-1.5 py-0.5 rounded`}>TODAY</span>}
+                                {completedRun && <span className="text-[9px] font-bold text-green-400 bg-green-900/20 px-1.5 py-0.5 rounded border border-green-500/20">DONE</span>}
+                                {isPast && !completedRun && !isRest && <span className="text-[9px] font-bold text-red-400 bg-red-900/20 px-1.5 py-0.5 rounded border border-red-500/20">MISSED</span>}
                               </div>
                               
-                              <div className={`rounded-xl p-4 transition-colors border ${completedRun ? 'bg-green-500/5 border-green-500/20' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}>
-                                 <div className="flex justify-between items-start mb-2">
+                              <div className={`rounded-xl p-4 transition-colors border ${
+                                completedRun ? 'bg-green-500/5 border-green-500/20' : 
+                                isRest ? 'bg-white/5 border-transparent' : 
+                                `bg-white/5 border-white/5 hover:bg-white/10 hover:border-${settings.themeColor}-500/30`
+                              }`}>
+                                 <div className="flex justify-between items-start mb-1">
                                     <h4 className={`font-bold text-sm ${completedRun ? 'text-green-100' : 'text-white'}`}>{workout.title}</h4>
-                                    <span className={`text-[10px] px-2 py-1 rounded-full ${completedRun ? 'bg-green-500/20 text-green-300' : `bg-${settings.themeColor}-500/10 text-${settings.themeColor}-400 border border-${settings.themeColor}-500/20`}`}>{workout.type}</span>
+                                    
+                                    {isRest ? (
+                                        <Sofa className="w-4 h-4 text-white/20" />
+                                    ) : (
+                                        <span className={`text-[9px] px-2 py-0.5 rounded-full ${completedRun ? 'bg-green-500/20 text-green-300' : `bg-${settings.themeColor}-500/10 text-${settings.themeColor}-400 border border-${settings.themeColor}-500/20`}`}>
+                                            {workout.type}
+                                        </span>
+                                    )}
                                  </div>
-                                 <p className="text-xs text-white/60 leading-relaxed mb-2">{workout.description}</p>
+                                 
+                                 {(!isRest || workout.description !== 'Rest Day') && (
+                                     <p className="text-xs text-white/60 leading-relaxed mb-2">{workout.description}</p>
+                                 )}
                                  
                                  {/* Planned Stats */}
-                                 {workout.distanceKm && !completedRun && (
-                                    <div className="text-xs font-mono text-white/40">{workout.distanceKm}km Target</div>
+                                 {workout.distanceKm && !completedRun && !isRest && (
+                                    <div className="text-xs font-mono text-white/40 flex items-center gap-1">
+                                        <TrendingUp className="w-3 h-3" />
+                                        {workout.distanceKm}km Target
+                                    </div>
                                  )}
 
                                  {/* ACTUAL RUN DATA ATTACHMENT */}
@@ -755,14 +793,6 @@ const App: React.FC = () => {
                                           </div>
                                        </div>
 
-                                       {completedRun.extendedAnalysis?.summary && (
-                                           <div className="relative pl-3 border-l-2 border-green-500/30 py-1">
-                                              <p className="text-xs text-green-100/70 italic leading-snug">
-                                                "{completedRun.extendedAnalysis.summary}"
-                                              </p>
-                                           </div>
-                                       )}
-                                       
                                        <button 
                                           onClick={() => { setViewingWorkout(completedRun); window.scrollTo(0,0); }}
                                           className="mt-2 w-full text-center text-[10px] uppercase font-bold text-green-400/60 hover:text-green-400 transition-colors"
@@ -960,6 +990,16 @@ const App: React.FC = () => {
                <GlassCard className="!p-4 bg-white/5 flex flex-col items-center justify-center gap-1">
                    <span className="text-xs uppercase text-white/40">Cadence</span>
                    <span className="text-xl font-bold text-purple-400">{viewingWorkout.avgCadence ? `${viewingWorkout.avgCadence}` : '-'}</span>
+               </GlassCard>
+               
+               {/* NEW FIELDS ADDED HERE */}
+               <GlassCard className="!p-4 bg-white/5 flex flex-col items-center justify-center gap-1">
+                   <span className="text-xs uppercase text-white/40">Calories</span>
+                   <span className="text-xl font-bold text-orange-400">{viewingWorkout.calories ? `${viewingWorkout.calories}` : '-'}</span>
+               </GlassCard>
+               <GlassCard className="!p-4 bg-white/5 flex flex-col items-center justify-center gap-1">
+                   <span className="text-xs uppercase text-white/40">Load</span>
+                   <span className="text-xl font-bold text-blue-400">{viewingWorkout.parsedData?.trainingLoadScore ? `${viewingWorkout.parsedData.trainingLoadScore}` : '-'}</span>
                </GlassCard>
             </div>
 
