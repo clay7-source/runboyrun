@@ -417,16 +417,25 @@ export const analyzeTcxFile = async (file: File, profile: AthleteProfile, readin
 
 export const generateTrainingPlan = async (
   profile: AthleteProfile, 
-  preferences: { longRunDay: string; workoutDay: string; notes: string }
+  preferences: { longRunDay: string; workoutDay: string; notes: string },
+  startDateTimestamp: number
 ): Promise<TrainingPlan> => {
   const context = getKarvonenContext(profile);
   const temporalContext = getCurrentTemporalContext();
-  
+  const startDateObj = new Date(startDateTimestamp);
+  const startDayName = startDateObj.toLocaleDateString('en-US', { weekday: 'long' });
+  const startDateString = startDateObj.toLocaleDateString();
+
   const prompt = `
     ${COACHING_SYSTEM_PROMPT}
 
-    TASK: PLAN GENERATION
+    TASK: FULL 4-WEEK DAILY SCHEDULE GENERATION
     Create a 4-week structured running training plan for this athlete.
+    
+    CRITICAL: You must generate a schedule entry for EVERY SINGLE DAY of the 4 weeks (28 days total).
+    - If a day is a rest day, the type MUST be "Rest" and the title MUST be "Rest Day".
+    - The plan starts on: ${startDateString} (which is a ${startDayName}).
+    - Ensure the sequence of days matches the calendar starting from ${startDayName}.
     
     ${temporalContext}
 
@@ -438,7 +447,7 @@ export const generateTrainingPlan = async (
     - Preferred Workout/Interval Day: ${preferences.workoutDay}
     - Specific Notes/Requests: "${preferences.notes}"
 
-    Output a JSON object with goal, durationWeeks, and schedule.
+    Output a JSON object with goal, durationWeeks, and schedule (Array of 28 objects).
   `;
 
   const response = await ai.models.generateContent({
@@ -459,10 +468,10 @@ export const generateTrainingPlan = async (
               type: Type.OBJECT,
               properties: {
                 week: { type: Type.INTEGER },
-                day: { type: Type.INTEGER },
+                day: { type: Type.INTEGER, description: "1 = Monday, 7 = Sunday. OR relative day 1-28." },
                 title: { type: Type.STRING },
                 description: { type: Type.STRING },
-                type: { type: Type.STRING },
+                type: { type: Type.STRING, enum: ["Run", "Rest", "Cross", "Long Run", "Intervals", "Tempo"] },
                 distanceKm: { type: Type.NUMBER },
               },
               required: ["week", "day", "title", "description", "type"]
@@ -476,15 +485,10 @@ export const generateTrainingPlan = async (
 
   const result = JSON.parse(response.text || '{}');
   
-  const now = new Date();
-  const day = now.getDay() || 7; 
-  if (day !== 1) now.setHours(-24 * (day - 1));
-  now.setHours(0, 0, 0, 0);
-
   return {
     id: Date.now().toString(),
     createdAt: Date.now(),
-    startDate: now.getTime(),
+    startDate: startDateTimestamp, // Use the user-selected start date
     goal: result.goal,
     durationWeeks: result.durationWeeks,
     schedule: result.schedule
