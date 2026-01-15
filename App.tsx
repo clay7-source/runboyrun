@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AthleteProfile, ReadinessData, WorkoutAnalysis, AnalysisType, HrZone, AppSettings, TrainingPlan, ScheduledWorkout, UserProfile, DataPoint } from './types';
 import { analyzeVitals, analyzeWorkoutImage, analyzeTcxFile, generateTrainingPlan, analyzeManualSleep } from './services/geminiService';
 import { formatDuration, formatPace } from './services/tcxParser';
 import { saveProfile, loadProfile, saveReadiness, loadReadiness, saveHistory, loadHistory, saveSettings, loadSettings, savePlan, loadPlan, savePlanPrefs, loadPlanPrefs, saveUser, loadUser, createBackup, restoreBackup } from './services/storage';
 import { GlassCard } from './components/GlassCard';
 import { AthleteProfile as ProfileComponent } from './components/AthleteProfile';
-import { Activity, Battery, Upload, Zap, ChevronRight, FileCode, ImageIcon, Loader2, TrendingUp, Mountain, History, Calendar, MapPin, Play, Settings, List, X, BarChart, Medal, Flame, Trash2, PlusCircle, CheckCircle, Clock, Cloud, Download, LogOut, ShieldAlert, AlertTriangle, Droplets, Gauge, BrainCircuit, Footprints, ArrowUpRight, ArrowDownRight, Wind, User, BarChart2, MousePointerClick, Moon, Sofa, LineChart, BarChart3 } from 'lucide-react';
+import { Activity, Battery, Upload, Zap, ChevronRight, FileCode, ImageIcon, Loader2, TrendingUp, Mountain, History, Calendar, MapPin, Play, Settings, List, X, BarChart, Medal, Flame, Trash2, PlusCircle, CheckCircle, Clock, Cloud, Download, LogOut, ShieldAlert, AlertTriangle, Droplets, Gauge, BrainCircuit, Footprints, ArrowUpRight, ArrowDownRight, Wind, User, BarChart2, MousePointerClick, Moon, Sofa } from 'lucide-react';
 
 const INITIAL_PROFILE: AthleteProfile = {
   name: '',
@@ -20,7 +20,7 @@ const INITIAL_PROFILE: AthleteProfile = {
   isConfigured: false
 };
 
-type Tab = 'timeline' | 'plan' | 'trends' | 'settings';
+type Tab = 'timeline' | 'plan' | 'settings';
 
 const App: React.FC = () => {
   // State
@@ -429,125 +429,6 @@ const App: React.FC = () => {
     );
   };
 
-  // --- Helpers for Charts ---
-  
-  const parsePaceToSeconds = (paceStr: string): number => {
-    if (!paceStr) return 0;
-    // Handle typical formats like "5'30"/km", "5:30", "5:30/km"
-    const clean = paceStr.replace(/\/km|min\/km/g, '').trim();
-    // Try splitting by ' or :
-    let parts = clean.split("'");
-    if (parts.length < 2) parts = clean.split(":");
-    
-    if (parts.length === 2) {
-        const mins = parseInt(parts[0]);
-        const secs = parseInt(parts[1].replace('"', '')); // Remove quote if present
-        if (!isNaN(mins) && !isNaN(secs)) {
-            return mins * 60 + secs;
-        }
-    }
-    return 0;
-  };
-  
-  const TrendGraph = ({ 
-    data, 
-    type, 
-    color, 
-    unit 
-  }: { 
-    data: { date: number, val: number, label?: string }[], 
-    type: 'line' | 'bar', 
-    color: string, 
-    unit: string 
-  }) => {
-    if (!data || data.length < 2) return (
-      <div className="h-48 flex items-center justify-center text-white/20 text-xs italic">
-        Need at least 2 workouts to show trend.
-      </div>
-    );
-
-    const width = 300;
-    const height = 150;
-    const padding = 20;
-
-    // Determine min/max for scaling
-    const vals = data.map(d => d.val);
-    const minVal = Math.min(...vals) * 0.9; // 10% buffer
-    const maxVal = Math.max(...vals) * 1.1;
-    const valRange = maxVal - minVal || 1;
-
-    // Time scaling
-    const minTime = data[0].date;
-    const maxTime = data[data.length - 1].date;
-    const timeRange = maxTime - minTime || 1;
-
-    // Helper to scale points
-    const getX = (t: number) => ((t - minTime) / timeRange) * (width - 2 * padding) + padding;
-    const getY = (v: number) => height - padding - ((v - minVal) / valRange) * (height - 2 * padding);
-
-    // Create path for line chart
-    const pointsPath = data.map(d => `${getX(d.date)},${getY(d.val)}`).join(' ');
-    
-    // Create bars for bar chart
-    const barWidth = Math.max(4, (width - 2 * padding) / data.length - 4);
-
-    return (
-      <div className="relative w-full h-full">
-         <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
-            {/* Grid lines (3 horizontal) */}
-            <line x1={padding} y1={padding} x2={width-padding} y2={padding} stroke="white" strokeOpacity="0.05" />
-            <line x1={padding} y1={height/2} x2={width-padding} y2={height/2} stroke="white" strokeOpacity="0.05" />
-            <line x1={padding} y1={height-padding} x2={width-padding} y2={height-padding} stroke="white" strokeOpacity="0.05" />
-            
-            {type === 'line' ? (
-              <>
-                <defs>
-                   <linearGradient id={`grad-${color}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-                      <stop offset="100%" stopColor={color} stopOpacity="0" />
-                   </linearGradient>
-                </defs>
-                <path d={`M${getX(minTime)},${height-padding} L${pointsPath} L${getX(maxTime)},${height-padding} Z`} fill={`url(#grad-${color})`} />
-                <polyline points={pointsPath} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                {data.map((d, i) => (
-                   <circle key={i} cx={getX(d.date)} cy={getY(d.val)} r="3" fill="#0f172a" stroke={color} strokeWidth="2" />
-                ))}
-              </>
-            ) : (
-              data.map((d, i) => (
-                <rect 
-                  key={i}
-                  x={getX(d.date) - barWidth/2} 
-                  y={getY(d.val)} 
-                  width={barWidth} 
-                  height={height - padding - getY(d.val)} 
-                  fill={color} 
-                  opacity="0.8" 
-                  rx="2"
-                />
-              ))
-            )}
-         </svg>
-         
-         {/* Labels */}
-         <div className="absolute top-0 right-0 text-[10px] text-white/30 font-mono">
-            Max: {unit === 'pace' ? formatPace(Math.round(maxVal/1.1)) : Math.round(maxVal/1.1) + unit}
-         </div>
-         <div className="absolute bottom-0 right-0 text-[10px] text-white/30 font-mono">
-            Min: {unit === 'pace' ? formatPace(Math.round(minVal/0.9)) : Math.round(minVal/0.9) + unit}
-         </div>
-         
-         {/* X Axis Date Labels (Start and End) */}
-         <div className="absolute bottom-[-15px] left-0 text-[10px] text-white/30">
-            {new Date(minTime).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
-         </div>
-         <div className="absolute bottom-[-15px] right-0 text-[10px] text-white/30">
-            {new Date(maxTime).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
-         </div>
-      </div>
-    );
-  };
-
   // --- Render Views ---
 
   const renderTimelineView = () => {
@@ -735,117 +616,6 @@ const App: React.FC = () => {
          </GlassCard>
       </div>
     );
-  };
-  
-  const renderTrendsView = () => {
-     // Prepare Data
-     const sortedHistory = useMemo(() => {
-        return [...history].sort((a,b) => a.timestamp - b.timestamp);
-     }, [history]);
-
-     if (sortedHistory.length < 2) {
-       return (
-         <div className="h-[70vh] flex flex-col items-center justify-center text-center p-6 space-y-4 animate-fade-in">
-           <BarChart2 className="w-12 h-12 text-white/20" />
-           <div>
-             <h3 className="text-lg font-bold text-white">Not Enough Data</h3>
-             <p className="text-sm text-white/50 max-w-xs">Log at least 2 workouts to unlock trend analysis and progress charts.</p>
-           </div>
-           <button onClick={() => setActiveTab('timeline')} className={`px-4 py-2 rounded-lg bg-${settings.themeColor}-500 text-white font-bold text-sm`}>
-             Go Log a Run
-           </button>
-         </div>
-       )
-     }
-
-     // 1. Weekly Volume Data
-     const weeklyVolumeData = (() => {
-        const weeks: Record<string, number> = {};
-        sortedHistory.forEach(h => {
-           const d = new Date(h.timestamp);
-           // Simple key: YYYY-WWW
-           const startOfYear = new Date(d.getFullYear(), 0, 1);
-           const weekNum = Math.ceil((((d.getTime() - startOfYear.getTime()) / 86400000) + startOfYear.getDay() + 1) / 7);
-           const key = `${d.getFullYear()}-W${weekNum}`;
-           
-           const dist = parseFloat((h.distance || '0').replace(' km', ''));
-           if (dist > 0) weeks[key] = (weeks[key] || 0) + dist;
-        });
-        
-        // Convert to array
-        return Object.entries(weeks).map(([k, v], i) => {
-           // Approximate date from week? simplified for now just using index or raw timestamp of last workout in that week
-           return { date: i, val: v, label: k }; 
-        }).slice(-8); // Last 8 weeks
-     })();
-     
-     // Correcting Date for charts -> We need proper timestamps for X axis scaling
-     const volumeChartData = sortedHistory.reduce<{date: number, val: number}[]>((acc, curr) => {
-         const date = new Date(curr.timestamp).setHours(0,0,0,0);
-         const existing = acc.find(a => a.date === date);
-         const dist = parseFloat((curr.distance || '0').replace(' km', ''));
-         if (existing) {
-             existing.val += dist;
-         } else {
-             acc.push({ date, val: dist });
-         }
-         return acc;
-     }, []);
-
-     // 2. Pace Data
-     const paceData = sortedHistory.map(h => ({
-        date: h.timestamp,
-        val: parsePaceToSeconds(h.avgPace || '0')
-     })).filter(d => d.val > 0 && d.val < 1200); // Filter out unrealistic paces
-
-     // 3. VO2 Max Data
-     const vo2Data = sortedHistory
-        .filter(h => h.extendedAnalysis?.vo2MaxEstimate)
-        .map(h => ({ date: h.timestamp, val: h.extendedAnalysis.vo2MaxEstimate || 0 }));
-        
-     // 4. Heart Rate Data
-     const hrData = sortedHistory
-        .filter(h => h.avgHr && h.avgHr > 0)
-        .map(h => ({ date: h.timestamp, val: h.avgHr || 0 }));
-
-
-     return (
-       <div className="space-y-6 pb-24 animate-fade-in">
-          <div className="flex items-center gap-2 mb-2 px-1">
-             <TrendingUp className={`w-5 h-5 ${getThemeColorClass('text')}`} />
-             <h2 className="text-xl font-bold text-white">Performance Trends</h2>
-          </div>
-
-          {/* Volume */}
-          <GlassCard title="Daily Volume" icon={<BarChart3 className="w-4 h-4 text-blue-400" />}>
-             <div className="h-40 w-full mt-2">
-                <TrendGraph data={volumeChartData} type="bar" color="#3b82f6" unit="km" />
-             </div>
-          </GlassCard>
-          
-          {/* Pace */}
-          <GlassCard title="Pace Evolution" icon={<Wind className="w-4 h-4 text-cyan-400" />}>
-             <div className="h-40 w-full mt-2">
-                <TrendGraph data={paceData} type="line" color="#22d3ee" unit="pace" />
-             </div>
-             <p className="text-[10px] text-white/30 text-center mt-2">Lower is faster</p>
-          </GlassCard>
-          
-          {/* VO2 Max */}
-          <GlassCard title="Est. VO2 Max" icon={<BrainCircuit className="w-4 h-4 text-purple-400" />}>
-             <div className="h-40 w-full mt-2">
-                <TrendGraph data={vo2Data} type="line" color="#a855f7" unit="" />
-             </div>
-          </GlassCard>
-          
-          {/* Heart Rate */}
-          <GlassCard title="Avg Heart Rate" icon={<Activity className="w-4 h-4 text-red-400" />}>
-             <div className="h-40 w-full mt-2">
-                <TrendGraph data={hrData} type="line" color="#f87171" unit="bpm" />
-             </div>
-          </GlassCard>
-       </div>
-     );
   };
   
   const renderPlanView = () => {
@@ -1500,13 +1270,12 @@ const App: React.FC = () => {
          <div className="flex-1 p-4">
              {activeTab === 'timeline' && renderTimelineView()}
              {activeTab === 'plan' && renderPlanView()}
-             {activeTab === 'trends' && renderTrendsView()}
              {activeTab === 'settings' && renderSettingsView()}
          </div>
 
          {/* Navigation Bar */}
          <div className="fixed bottom-0 left-0 w-full z-40 bg-[#0f172a]/80 backdrop-blur-xl border-t border-white/10">
-            <div className="max-w-md mx-auto grid grid-cols-4 h-20 items-center justify-items-center">
+            <div className="max-w-md mx-auto grid grid-cols-3 h-20 items-center justify-items-center">
                <button onClick={() => setActiveTab('timeline')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'timeline' ? 'text-white scale-105' : 'text-white/40 hover:text-white/60'}`}>
                   <Activity className="w-6 h-6" />
                   <span className="text-[10px] font-medium uppercase tracking-wide">Coach</span>
@@ -1514,10 +1283,6 @@ const App: React.FC = () => {
                <button onClick={() => setActiveTab('plan')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'plan' ? 'text-white scale-105' : 'text-white/40 hover:text-white/60'}`}>
                   <Calendar className="w-6 h-6" />
                   <span className="text-[10px] font-medium uppercase tracking-wide">Plan</span>
-               </button>
-               <button onClick={() => setActiveTab('trends')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'trends' ? 'text-white scale-105' : 'text-white/40 hover:text-white/60'}`}>
-                  <BarChart2 className="w-6 h-6" />
-                  <span className="text-[10px] font-medium uppercase tracking-wide">Trends</span>
                </button>
                <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'settings' ? 'text-white scale-105' : 'text-white/40 hover:text-white/60'}`}>
                   <Settings className="w-6 h-6" />
